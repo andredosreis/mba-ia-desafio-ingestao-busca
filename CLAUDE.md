@@ -16,6 +16,7 @@ Regras do fluxo:
 
 - `docs/PRDProgress.json` é a **fonte única de verdade** do estado do projeto. Leia-o antes de começar qualquer trabalho e atualize-o ao concluir.
 - **Uma feature por vez.** Não comece outra feature antes de terminar a atual. Respeite as waves e dependências do tracking.
+- **Aprendizado é entregável:** este é um projeto de pós-graduação. Ao encerrar cada feature, a seção correspondente de `docs/APRENDIZADO.md` DEVE ser preenchida (explicação didática do código real + perguntas de autoavaliação). Feature sem seção de aprendizado preenchida não está concluída.
 - O `contract.md` é derivado dos critérios de aceitação do PRD — não invente critérios novos.
 - Quem implementa não avalia o próprio trabalho: a avaliação final é da skill `evaluator`.
 

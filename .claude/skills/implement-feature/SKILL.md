@@ -33,6 +33,11 @@ Você implementa UMA feature por vez, guiado por três arquivos do `specDir` da 
 
 ### 4. Encerramento
 - Atualize a feature para `implemented` no `PRDProgress.json` e o campo `updatedAt`.
+- **Preencha a seção da feature em `docs/APRENDIZADO.md`** (obrigatório — o usuário está estudando este projeto para a pós-graduação):
+  - O que foi feito e por quê (decisões e trade-offs, em linguagem didática);
+  - Passo a passo do código REAL implementado (fluxo de execução, função por função);
+  - 3 a 5 perguntas de autoavaliação sobre a implementação, com respostas em blocos `<details><summary>Resposta</summary>...</details>`;
+  - Remova o marcador 🔒 da seção.
 - Reporte: o que foi feito, resultado de cada gate, itens do contract verificados e qualquer desvio do plan (com justificativa).
 
 ## Guardrails
