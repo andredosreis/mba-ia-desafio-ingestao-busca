@@ -1,3 +1,17 @@
+# Ambiente virtual
+venv/
+.venv/
+
+# Variáveis de ambiente (NUNCA commitar a chave da API)
 .env
-/venv
-__pycache__
+
+# Cache do Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Volumes / dados locais
+pgdata/
+
+# Sistema operativo
+.DS_Store

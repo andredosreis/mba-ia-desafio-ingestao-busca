@@ -1,0 +1,76 @@
+{
+  "project": "ingestao-busca-semantica-langchain-postgres",
+  "prd": "docs/PRD.md",
+  "updatedAt": "2026-07-11",
+  "statusValues": ["pending", "in_progress", "implemented", "evaluated"],
+  "rules": {
+    "oneFeatureAtATime": true,
+    "respectWaves": true,
+    "implementedBy": "skill implement-feature apos gates verdes",
+    "evaluatedBy": "skill evaluator apos verificar o contract.md"
+  },
+  "waves": [
+    { "wave": 1, "features": ["F01"] },
+    { "wave": 2, "features": ["F02", "F03"] },
+    { "wave": 3, "features": ["F04"] },
+    { "wave": 4, "features": ["F05"] }
+  ],
+  "features": [
+    {
+      "id": "F01",
+      "name": "Fundação e Infraestrutura",
+      "wave": 1,
+      "status": "pending",
+      "dependsOn": [],
+      "tags": ["infra", "docker", "postgres", "pgvector"],
+      "specDir": "docs/features/F01-fundacao",
+      "acceptanceCriteria": ["CA-01.1", "CA-01.2", "CA-01.3"],
+      "deliverables": [".env.example alinhado", "banco validado (compose do template)", "venv com requirements instalado"],
+      "notes": "docker-compose.yml, requirements.txt, document.pdf e stubs de src/ já vêm do template oficial (fork de devfullcycle/mba-ia-desafio-ingestao-busca)"
+    },
+    {
+      "id": "F02",
+      "name": "Ingestão do PDF",
+      "wave": 2,
+      "status": "pending",
+      "dependsOn": ["F01"],
+      "tags": ["ingestao", "embeddings", "pipeline"],
+      "specDir": "docs/features/F02-ingestao",
+      "acceptanceCriteria": ["CA-02.1", "CA-02.2", "CA-02.3"],
+      "deliverables": ["src/ingest.py (implementar ingest_pdf)"]
+    },
+    {
+      "id": "F03",
+      "name": "Busca Semântica e Resposta",
+      "wave": 2,
+      "status": "pending",
+      "dependsOn": ["F01"],
+      "tags": ["busca", "rag", "llm", "prompt"],
+      "specDir": "docs/features/F03-busca",
+      "acceptanceCriteria": ["CA-03.1", "CA-03.2", "CA-03.3", "CA-03.4"],
+      "deliverables": ["src/search.py"]
+    },
+    {
+      "id": "F04",
+      "name": "CLI de Chat",
+      "wave": 3,
+      "status": "pending",
+      "dependsOn": ["F02", "F03"],
+      "tags": ["cli", "ux"],
+      "specDir": "docs/features/F04-cli-chat",
+      "acceptanceCriteria": ["CA-04.1", "CA-04.2", "CA-04.3", "CA-04.4"],
+      "deliverables": ["src/chat.py"]
+    },
+    {
+      "id": "F05",
+      "name": "README e Entrega",
+      "wave": 4,
+      "status": "pending",
+      "dependsOn": ["F01", "F02", "F03", "F04"],
+      "tags": ["docs", "entrega"],
+      "specDir": "docs/features/F05-readme-entrega",
+      "acceptanceCriteria": ["CA-05.1", "CA-05.2", "CA-05.3"],
+      "deliverables": ["README.md"]
+    }
+  ]
+}
