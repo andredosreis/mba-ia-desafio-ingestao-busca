@@ -159,7 +159,89 @@ essa é a proposta de valor do framework.
 > de autoavaliação sobre A NOSSA implementação (não só teoria).
 
 ### F01 — Fundação e Infraestrutura
-🔒 *A preencher após a implementação.*
+
+**O que foi feito e por quê**
+
+F01 não escreveu código de produto — o objetivo era **validar** a infraestrutura
+herdada do template (Docker Compose, `requirements.txt`, `.env.example`) e deixar
+o ambiente pronto para F02–F05. Na prática isso significou: criar o venv, instalar
+as dependências, subir o Postgres+pgVector via Docker Compose, confirmar que a
+extensão `vector` existe no banco `rag`, e validar as variáveis do `.env`.
+
+Durante a validação apareceram dois problemas reais que precisaram de correção:
+
+1. **Bug no `docker-compose.yml`** — o serviço `bootstrap_vector_ext` "passava"
+   (`exit code 0`, container "saudável" na aparência), mas **não criava a extensão
+   `vector`**. Causa raiz: o serviço define `entrypoint: ["/bin/sh", "-c"]` (uma
+   *lista*, "exec form") e `command` como uma **string simples**. Quando `command`
+   é string, o Docker Compose faz *shell-split* nela antes de montar o argv final
+   — ou seja, ele quebra a string em várias palavras e concatena com o entrypoint.
+   O resultado real executado era `/bin/sh -c PGPASSWORD=postgres psql "..." -v ...`,
+   onde a flag `-c` do `/bin/sh` consome **apenas o próximo argumento** como script.
+   Esse argumento era `PGPASSWORD=postgres` — uma atribuição de variável sozinha, que
+   em shell POSIX é uma instrução válida (não faz nada, mas não dá erro) e sai com
+   código 0. Todo o resto (`psql`, a URL de conexão, o `-c "CREATE EXTENSION..."`)
+   virava parâmetros posicionais (`$1`, `$2`...) do script, nunca usados.
+   **Correção:** transformar `command` numa lista YAML com um único elemento
+   (`command:\n  - '...'`). Uma lista não passa pelo *shell-split* do Compose —
+   o conteúdo inteiro chega como um único argumento para `-c`, exatamente como
+   pretendido. Depois da correção, `docker compose logs bootstrap_vector_ext`
+   mostrou `CREATE EXTENSION` e a query em `pg_extension` confirmou `vector 0.8.5`.
+
+2. **`OPENAI_API_KEY` ainda é o placeholder** — o `.env` tem `sk-sua-chave-aqui`
+   (o mesmo texto do `.env.example`), não uma chave real. Isso não bloqueia a F01
+   (o contrato exige só a *presença* da variável), mas vai impedir qualquer chamada
+   real à API da OpenAI quando chegarmos em F02/F03. Fica registrado como pendência.
+
+**Passo a passo do que foi executado**
+
+```bash
+python3 -m venv venv && source venv/bin/activate
+# dependências já instaladas via `uv pip install -r requirements.txt` (mesmo efeito de pip)
+docker compose up -d
+docker compose exec postgres psql -U postgres -d rag -c \
+  "SELECT extname FROM pg_extension WHERE extname='vector';"
+```
+
+- `docker compose ps` → `postgres_rag` com status `healthy`.
+- `docker compose logs bootstrap_vector_ext` → `CREATE EXTENSION` (após a correção do YAML).
+- `python -m py_compile src/*.py` → gate de sintaxe verde.
+- Import de `langchain`, `langchain_openai`, `langchain_postgres`, `langchain_text_splitters`, `pypdf` → sem `ImportError`.
+
+**Decisões tomadas**
+
+- Nenhum arquivo novo em `src/`: F01 é só infraestrutura, código de produto é
+  escopo de F02/F03/F04 (evita invadir a responsabilidade de outra feature).
+- A correção do `docker-compose.yml` foi feita porque era **pré-requisito
+  funcional** do CA-01.1 ("a extensão vector é criada") — sem ela, o critério de
+  aceitação simplesmente não passa, independentemente de qualquer código Python.
+
+**Perguntas de autoavaliação — F01**
+
+1. **Por que `entrypoint: ["/bin/sh", "-c"]` + `command` como string quebra o script, mesmo o container saindo com exit code 0?**
+   <details><summary>Resposta</summary>
+   Porque quando `command` é uma string, o Docker Compose faz shell-split nela e a transforma numa lista de argumentos antes de concatenar com o `entrypoint`. A flag `-c` do `/bin/sh` só consome o argumento imediatamente seguinte como "script" — os demais viram parâmetros posicionais ignorados. Se esse primeiro argumento for uma sintaxe válida (mesmo que sem efeito, como uma atribuição de variável `VAR=valor`), o shell não gera erro e sai com código 0, mascarando a falha.
+   </details>
+
+2. **Por que transformar `command` numa lista YAML de um elemento resolve o problema?**
+   <details><summary>Resposta</summary>
+   Porque o Compose só aplica shell-split quando `command` é uma string escalar. Quando é uma lista, cada item da lista vira um argumento literal do processo, sem reprocessamento. Com um único item contendo o script inteiro, esse item chega intacto como o argumento do `-c`, e o `/bin/sh` o interpreta corretamente como um script completo (incluindo suas próprias aspas internas).
+   </details>
+
+3. **Por que um `exit code 0` não é prova suficiente de que a extensão `vector` foi criada?**
+   <details><summary>Resposta</summary>
+   Exit code 0 só significa que o processo não retornou erro — não que ele fez o que deveria. Um shell script vazio, ou uma atribuição de variável sem uso, também sai com 0. A validação real do CA-01.1 exige uma consulta direta (`SELECT extname FROM pg_extension WHERE extname='vector'`) que confirma o estado do banco, independentemente do que o container "disse" ter feito.
+   </details>
+
+4. **Por que a F01 não precisou (nem devia) escrever um script Python de verificação?**
+   <details><summary>Resposta</summary>
+   Porque a validação de infraestrutura pode ser feita inteiramente com as próprias ferramentas de infraestrutura (Docker Compose, psql, pip/uv) — não há lógica de negócio envolvida. Criar um `check_env.py` adicionaria código fora do previsto no PRD e antecipraria responsabilidades de conexão/embedding que pertencem à F02/F03, violando o princípio de uma feature por vez.
+   </details>
+
+5. **O que ainda falta antes de F02/F03 conseguirem rodar de ponta a ponta com a OpenAI real?**
+   <details><summary>Resposta</summary>
+   Substituir o valor placeholder `sk-sua-chave-aqui` em `OPENAI_API_KEY` por uma chave real da OpenAI. A F01 só valida que a variável existe no `.env`, não que ela é funcional — essa verificação fica para quando F02/F03 precisarem de fato chamar a API.
+   </details>
 
 ### F02 — Ingestão do PDF
 🔒 *A preencher após a implementação.*
