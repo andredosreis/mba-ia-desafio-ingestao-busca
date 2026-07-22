@@ -352,7 +352,36 @@ Decisões de destaque:
    </details>
 
 ### F05 — README e Entrega
-🔒 *Spec/plan/contract prontos em `docs/features/F05-readme-entrega/` — seção a preencher após a implementação.*
+
+**O que foi feito e por quê**
+
+Na F05 finalizamos a documentação principal no `README.md` e a validação de higiene do repositório público para a entrega do desafio.
+
+Decisões de destaque:
+1. **Documentação completa e autossuficiente (CA-05.1 e CA-05.2)**: o `README.md` foi elaborado em português claro, contendo pré-requisitos, instruções de criação/ativação do `venv`, instalação de dependências, tabela explicativa de variáveis de ambiente, ordem literal de execução (`docker compose up -d` -> `python src/ingest.py` -> `python src/chat.py`), exemplos de uso formatados em `PERGUNTA:` / `RESPOSTA:` (com pergunta no contexto e fora do contexto) e seção de solução de problemas.
+2. **Higiene do repositório público (CA-05.3)**: confirmamos que nenhum arquivo sensível ou local (`.env`, `venv/`, `pgdata/`) está rastreado no git. Validamos a presença de todos os entregáveis do template e garantimos a ausência de chaves reais da OpenAI commitadas.
+
+**Perguntas de autoavaliação — F05**
+
+1. **Qual é a ordem exata de comandos necessária para subir e executar o sistema do zero em uma máquina limpa?**
+   <details><summary>Resposta</summary>
+   1) `python3 -m venv venv && source venv/bin/activate`  
+   2) `pip install -r requirements.txt`  
+   3) `cp .env.example .env` (e preencher `OPENAI_API_KEY`)  
+   4) `docker compose up -d`  
+   5) `python src/ingest.py`  
+   6) `python src/chat.py`
+   </details>
+
+2. **Quais arquivos/diretórios NUNCA devem ser commitados no repositório público e por quê?**
+   <details><summary>Resposta</summary>
+   O arquivo `.env` (contém credenciais reais como a `OPENAI_API_KEY`), o diretório `venv/` (ambiente virtual Python local dependente de SO) e `pgdata/` (dados físicos do Postgres). Todos eles são ignorados pelo `.gitignore`.
+   </details>
+
+3. **Como o README documenta o comportamento do sistema diante de perguntas fora do contexto do PDF?**
+   <details><summary>Resposta</summary>
+   Exibindo um exemplo claro onde uma pergunta fora do documento (ex.: "Qual é a capital da França?") recebe obrigatoriamente a resposta padrão exata: `"Não tenho informações necessárias para responder sua pergunta."`.
+   </details>
 
 ---
 

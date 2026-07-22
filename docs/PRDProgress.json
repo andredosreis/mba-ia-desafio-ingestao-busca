@@ -65,7 +65,7 @@
       "id": "F05",
       "name": "README e Entrega",
       "wave": 4,
-      "status": "pending",
+      "status": "implemented",
       "dependsOn": ["F01", "F02", "F03", "F04"],
       "tags": ["docs", "entrega"],
       "specDir": "docs/features/F05-readme-entrega",
