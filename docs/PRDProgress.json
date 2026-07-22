@@ -1,7 +1,7 @@
 {
   "project": "ingestao-busca-semantica-langchain-postgres",
   "prd": "docs/PRD.md",
-  "updatedAt": "2026-07-20",
+  "updatedAt": "2026-07-21",
   "statusValues": ["pending", "in_progress", "implemented", "evaluated"],
   "rules": {
     "oneFeatureAtATime": true,
@@ -32,7 +32,7 @@
       "id": "F02",
       "name": "Ingestão do PDF",
       "wave": 2,
-      "status": "pending",
+      "status": "implemented",
       "dependsOn": ["F01"],
       "tags": ["ingestao", "embeddings", "pipeline"],
       "specDir": "docs/features/F02-ingestao",
@@ -43,7 +43,7 @@
       "id": "F03",
       "name": "Busca Semântica e Resposta",
       "wave": 2,
-      "status": "pending",
+      "status": "implemented",
       "dependsOn": ["F01"],
       "tags": ["busca", "rag", "llm", "prompt"],
       "specDir": "docs/features/F03-busca",

@@ -244,16 +244,84 @@ docker compose exec postgres psql -U postgres -d rag -c \
    </details>
 
 ### F02 — Ingestão do PDF
-🔒 *A preencher após a implementação.*
+
+**O que foi feito e por quê**
+
+Na F02 implementamos o pipeline completo de ingestão do documento PDF em `src/ingest.py`. O objetivo foi transformar o PDF bruto em vetores numéricos de 1536 dimensões e armazená-los no PostgreSQL com a extensão `pgvector`. 
+
+Três decisões principais garantem o funcionamento correto:
+1. **Idempotência com `pre_delete_collection=True`**: ao inicializar o `PGVector`, configuramos `pre_delete_collection=True`. Isso faz com que a coleção existente seja limpa antes da inserção, garantindo que re-execuções da ingestão não dupliquem os dados (atendendo ao CA-02.2).
+2. **Chunking com `RecursiveCharacterTextSplitter`**: dividimos o texto em pedaços de no máximo 1000 caracteres com 150 caracteres de sobreposição (overlap). Isso preserva o contexto entre chunks adjacentes.
+3. **Tratamento amigável de erros**: capturamos `FileNotFoundError` (PDF não encontrado) e erros de conexão com o banco de dados (banco parado), exibindo mensagens explicativas em português no `sys.stderr` e saindo com código 1 sem exibir tracebacks indecifráveis para o usuário.
+
+**Passo a passo do código REAL (`src/ingest.py`)**
+
+1. `carregar_paginas_pdf(caminho_pdf)`: verifica se o caminho do PDF existe (`os.path.exists`). Se não existir, lança `FileNotFoundError`. Caso exista, usa o `PyPDFLoader` para carregar o arquivo e retornar uma lista de `Document`.
+2. `dividir_paginas_em_chunks(paginas)`: instancia `RecursiveCharacterTextSplitter` configurado com `chunk_size=1000` e `chunk_overlap=150`, retornando a lista de chunks.
+3. `criar_vector_store_para_ingestao()`: valida as variáveis de ambiente (`DATABASE_URL`, `PG_VECTOR_COLLECTION_NAME`, `OPENAI_EMBEDDING_MODEL`), instancia `OpenAIEmbeddings` com `text-embedding-3-small` e inicializa o `PGVector` com `pre_delete_collection=True`.
+4. `ingest_pdf()`: orquestra todo o fluxo dentro de blocos `try/except`, chamando os helpers e invocando `vector_store.add_documents(chunks)`. Ao final, imprime no `stdout`: `Ingestão concluída: N chunks armazenados na collection 'document_chunks'.`
+
+**Perguntas de autoavaliação — F02**
+
+1. **Por que utilizamos `pre_delete_collection=True` na instanciação do PGVector?**
+   <details><summary>Resposta</summary>
+   Para garantir a idempotência do pipeline de ingestão. Ao recriar/limpar a coleção no PostgreSQL antes de adicionar os novos chunks, evitamos que a re-execução do script `src/ingest.py` acumule documentos duplicados na tabela do banco de dados.
+   </details>
+
+2. **Como o tratamento de erros do `ingest_pdf()` trata um arquivo PDF inexistente vs. falha na conexão do PostgreSQL?**
+   <details><summary>Resposta</summary>
+   O `carregar_paginas_pdf` lança `FileNotFoundError` com uma mensagem direcionando a checar a variável `PDF_PATH` no `.env`. Falhas de banco (como `OperationalError` ou recusa de conexão) são capturadas no `except Exception` principal e exibem uma mensagem orientando a subir o banco com `docker compose up -d`. Ambas as saídas são enviadas ao `sys.stderr` com `sys.exit(1)` e sem traceback cru.
+   </details>
+
+3. **Qual classe do LangChain foi utilizada para gerar os embeddings e qual modelo foi configurado?**
+   <details><summary>Resposta</summary>
+   Utilizamos a classe `OpenAIEmbeddings` da biblioteca `langchain_openai`, configurada com a variável de ambiente `OPENAI_EMBEDDING_MODEL` (cujo valor é `text-embedding-3-small`).
+   </details>
+
+---
 
 ### F03 — Busca Semântica e Resposta
-🔒 *A preencher após a implementação.*
+
+**O que foi feito e por quê**
+
+Na F03 implementamos a cadeia RAG de consulta em `src/search.py`. O componente recupera os 10 chunks mais relevantes do banco de dados PostgreSQL utilizando distância de cosseno, formata esses chunks dentro do prompt guardrail fixo do desafio e envia a requisição para a LLM (`ChatOpenAI`).
+
+Decisões de destaque:
+1. **Busca por similaridade `similarity_search_with_score(query, k=10)`**: conforme exigido pelo enunciado, realizamos a chamada literal de busca no `PGVector` fixando `k=10`.
+2. **`PROMPT_TEMPLATE` Intocado**: preservamos o template original do desafio com os blocos `CONTEXTO`, `REGRAS`, `EXEMPLOS DE PERGUNTAS FORA DO CONTEXTO` e `PERGUNTA DO USUÁRIO`, garantindo que a LLM responda estritamente com base nos dados recuperados e utilize a frase padrão exata para perguntas sem contexto.
+3. **LCEL (LangChain Expression Language)**: a chain foi construída combinando `RunnableLambda(buscar_e_montar_contexto)`, `RunnablePassthrough()`, `PromptTemplate`, `ChatOpenAI` e `StrOutputParser()`.
+4. **Interface dual em `search_prompt`**: quando chamada sem argumentos (`search_prompt()`), a função retorna o objeto chain pronto para ser invocado pelo chat (F04). Quando chamada com uma string (`search_prompt("pergunta")`), ela executa a busca e retorna diretamente a string de resposta.
+
+**Passo a passo do código REAL (`src/search.py`)**
+
+1. `montar_contexto(resultados)`: recebe a lista de tuplas `(Document, float)` retornada pelo `similarity_search_with_score`, extrai `page_content` de cada documento e os junta com `\n\n`.
+2. `verificar_colecao_populada()`: executa uma consulta SQL via SQLAlchemy na tabela `langchain_pg_embedding` para verificar se a coleção possui registros (retornando `True` ou `False`), permitindo que a CLI (F04) alerte se o banco precisa de ingestão antes de aceitar perguntas.
+3. `criar_vector_store_para_busca()`: inicializa a conexão com o `PGVector` sem `pre_delete_collection` (já que a busca é operação somente de leitura).
+4. `criar_chain_rag()`: define a função interna `buscar_e_montar_contexto` (que executa `vector_store.similarity_search_with_score(pergunta, k=10)`), compõe o mapa LCEL e encadeia o `PromptTemplate`, `ChatOpenAI(model=OPENAI_MODEL)` e `StrOutputParser()`.
+5. `search_prompt(question=None)`: gerencia a execução da chain e o tratamento de erros (exibindo mensagens claras em português e retornando `None` caso haja falha de conexão ou configuração).
+
+**Perguntas de autoavaliação — F03**
+
+1. **Por que o modelo de embedding usado na busca (`src/search.py`) precisa obrigatoriamente ser idêntico ao da ingestão (`src/ingest.py`)?**
+   <details><summary>Resposta</summary>
+   Cada modelo de embedding projeta o texto em um espaço vetorial distinto. Para que a distância de cosseno entre o vetor da pergunta e os vetores dos chunks armazenados seja matematicamente válida, ambos devem ser gerados pelo mesmo modelo (`text-embedding-3-small`).
+   </details>
+
+2. **Como a chain RAG lida com perguntas que não têm resposta no PDF (ex.: "Qual é a capital da França?")?**
+   <details><summary>Resposta</summary>
+   O `similarity_search_with_score` ainda trará os 10 chunks mais próximos no banco. No entanto, o `PROMPT_TEMPLATE` possui regras explícitas de guardrail e exemplos few-shot instruindo a LLM a responder exatamente `"Não tenho informações necessárias para responder sua pergunta."` quando a informação não estiver presente no contexto.
+   </details>
+
+3. **Qual é o comportamento da função `search_prompt()` quando invocada sem parâmetros versus com parâmetro?**
+   <details><summary>Resposta</summary>
+   Sem parâmetros (`search_prompt()`), ela constrói e retorna o objeto `Runnable` da chain LCEL. Com parâmetro (`search_prompt("pergunta")`), ela invoca a chain passando a pergunta e retorna diretamente a string com a resposta gerada pela LLM.
+   </details>
 
 ### F04 — CLI de Chat
-🔒 *A preencher após a implementação.*
+🔒 *Spec/plan/contract prontos em `docs/features/F04-cli-chat/` (revalidar interfaces após F02/F03) — seção a preencher após a implementação.*
 
 ### F05 — README e Entrega
-🔒 *A preencher após a implementação.*
+🔒 *Spec/plan/contract prontos em `docs/features/F05-readme-entrega/` — seção a preencher após a implementação.*
 
 ---
 
