@@ -318,7 +318,38 @@ Decisões de destaque:
    </details>
 
 ### F04 — CLI de Chat
-🔒 *Spec/plan/contract prontos em `docs/features/F04-cli-chat/` (revalidar interfaces após F02/F03) — seção a preencher após a implementação.*
+
+**O que foi feito e por quê**
+
+Na F04 implementamos a interface de linha de comando (CLI) em `src/chat.py`, permitindo uma interação fluida em loop no terminal. A CLI se conecta com o componente de busca (F03) e com a base vetorial populada (F02).
+
+Decisões de destaque:
+1. **Validação de ambiente na inicialização (CA-04.4)**: antes de iniciar o loop de chat, `main()` verifica se a chain pôde ser criada (`search_prompt()`) e se a coleção do PGVector contém documentos (`verificar_colecao_populada()`). Se a base estiver vazia ou o ambiente com erro, a CLI imprime uma mensagem clara em português orientando os passos de correção e encerra graciosamente sem stack trace.
+2. **Loop de chat resiliente (CA-04.1 e CA-04.2)**: a CLI exibe a mensagem inicial `"Faça sua pergunta:"` e entra em loop lendo `PERGUNTA: `. A resposta da LLM é impressa com o prefixo `RESPOSTA: `. Erros transitórios de modelo/rede na chamada do `.invoke()` são tratados por `processar_pergunta()`, exibindo aviso amigável sem encerrar a sessão de chat.
+3. **Encerramento gracioso (CA-04.3)**: palavras-chave de saída (`sair`, `exit`, `quit` - case-insensitive) e atalhos de terminal (`Ctrl+C` / `KeyboardInterrupt` e `Ctrl+D` / `EOFError`) exibem a mensagem de despedida `"Encerrando. Até logo!"` e finalizam a aplicação com exit code 0 sem tracebacks.
+
+**Passo a passo do código REAL (`src/chat.py`)**
+
+1. `processar_pergunta(chain, pergunta: str)`: invoca `chain.invoke(pergunta)` dentro de um bloco `try/except`. Se ocorrer exceção na API, retorna a string `"Erro ao consultar o modelo. Verifique sua conexão e a OPENAI_API_KEY."`, mantendo o loop vivo.
+2. `executar_loop_chat(chain)`: imprime `"Faça sua pergunta:"` e inicia um loop `while True`. Lê a entrada com `input("PERGUNTA: ").strip()`. Se vazia, ignora. Se corresponder a `COMANDOS_SAIDA` (`sair`, `exit`, `quit`), imprime despedida e encerra. Em caso de `KeyboardInterrupt` ou `EOFError`, imprime quebra de linha e despedida, encerrando graciosamente.
+3. `main()`: invoca `search_prompt()`. Se retornar `None`, imprime instruções de solução (docker compose up -d, .env, ingest.py). Se `verificar_colecao_populada()` retornar `False`, imprime `"A base está vazia. Execute primeiro: python src/ingest.py"`. Se tudo estiver OK, chama `executar_loop_chat(chain)`.
+
+**Perguntas de autoavaliação — F04**
+
+1. **Como a CLI verifica se o banco de dados está populado antes de iniciar o loop de perguntas?**
+   <details><summary>Resposta</summary>
+   Invocando `verificar_colecao_populada()` exposta por `src/search.py`, que roda uma query SQL direta na tabela `langchain_pg_embedding` do Postgres sem fazer chamadas à API da OpenAI. Se retornar `False`, a CLI avisa para executar `python src/ingest.py` e encerra.
+   </details>
+
+2. **O que acontece se o usuário pressionar Ctrl+C (SIGINT) ou Ctrl+D (EOF) durante a leitura do prompt?**
+   <details><summary>Resposta</summary>
+   A exceção `KeyboardInterrupt` ou `EOFError` é capturada pelo bloco `try/except` de `executar_loop_chat()`, imprimindo a mensagem de despedida `"Encerrando. Até logo!"` e saindo graciosamente com exit code 0, sem exibir traceback de Python no terminal.
+   </details>
+
+3. **Por que erros ao invocar a chain RAG (`chain.invoke`) não encerram o loop de chat?**
+   <details><summary>Resposta</summary>
+   Porque `processar_pergunta()` envolve a chamada em um `try/except Exception`, capturando falhas pontuais de API ou rede e retornando uma mensagem de erro em português. Assim, o erro é exibido no campo `RESPOSTA: `, e a CLI continua pronta para aceitar novas perguntas do usuário.
+   </details>
 
 ### F05 — README e Entrega
 🔒 *Spec/plan/contract prontos em `docs/features/F05-readme-entrega/` — seção a preencher após a implementação.*

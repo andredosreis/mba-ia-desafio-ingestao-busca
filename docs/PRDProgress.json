@@ -54,7 +54,7 @@
       "id": "F04",
       "name": "CLI de Chat",
       "wave": 3,
-      "status": "pending",
+      "status": "implemented",
       "dependsOn": ["F02", "F03"],
       "tags": ["cli", "ux"],
       "specDir": "docs/features/F04-cli-chat",
