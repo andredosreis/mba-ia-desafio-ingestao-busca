@@ -131,3 +131,81 @@ Mudanças no `README.md`:
 Verificação: `grep "3\.10"` no README → **nenhuma ocorrência**. A configuração que o README agora anuncia (Python 3.12) é exatamente a que foi executada de ponta a ponta no dry-run desta reavaliação — clone limpo, banco zerado, 78 pacotes instalados sem erro, ingestão de 67 chunks e chat respondendo corretamente dentro e fora do contexto.
 
 Limitação registrada: nesta máquina de desenvolvimento nem `python3.12` está no PATH (o interpretador é gerenciado pelo `uv`, fora dele). Numa instalação convencional de Python 3.12 — python.org ou Homebrew — o comando existe. O README está correto para a máquina de um avaliador; esta máquina é o caso atípico.
+
+---
+
+## Avaliação independente (2026-09-03) — achado que esta avaliação não encontrou
+
+Um avaliador separado, sem participação na implementação, refez a F05 do zero. **Veredito: REJECTED**, por um motivo diferente e novo.
+
+### Problema #5 — [BLOQUEANTE — CA-05.1] `pytest` documentado no README mas ausente de `requirements.txt`
+
+O README (linha 225) instrui `python -m pytest tests/ -q`. Num clone limpo que seguiu o README ao pé da letra, esse comando morre:
+
+```
+$ python -m pytest tests/ -q
+No module named pytest        (exit 1)
+```
+
+`pytest` não está em `requirements.txt` — nem na branch, nem em `origin/main`. Está instalado só no venv local do desenvolvedor (`9.1.1`), fora do arquivo de dependências. Isso viola a cláusula literal do contrato *"nenhum passo exige conhecimento que não esteja escrito no README"*: para rodar um comando que o próprio README manda rodar, é preciso saber, de fora dele, executar `pip install pytest`.
+
+O avaliador confirmou pelo histórico (`git log -S pytest -- README.md`) que a seção de testes foi introduzida pelo commit `00a9c45` — o commit da própria F05 —, logo o achado está em escopo.
+
+### Por que a avaliação anterior não pegou
+
+Registro por honestidade metodológica, com as palavras do avaliador independente: o dry-run anterior *"só exercitou a cadeia do produto (compose → ingest → chat) e parou ali; não executou o último comando documentado do README"*. E mais: este report afirmava "gates 2/2 verdes (`pytest` 36/36)" — verdadeiro no venv do projeto, mas o gate **nunca foi testado a partir do clone limpo que a própria avaliação criou**, onde falhava.
+
+É o tipo de ponto cego que aparece quando quem avalia já sabe o que espera confirmar — e é precisamente o motivo de o harness exigir um avaliador separado.
+
+### O que ele confirmou como correto
+
+- O dry-run do **produto** funciona de ponta a ponta a partir de clone limpo com banco zerado: `pip install` exit 0, extensão `vector` criada em volume novo, ingestão de 67 chunks a 3072 dimensões, e os **dois** exemplos in-context do README reproduzindo literalmente o que o README promete (`R$ 722.875.391,46` e `1971`), mais 4 armadilhas byte-exatas.
+- CA-05.2 **PASS**: as 10 variáveis explicadas, ordem de execução correta, frase padrão byte-idêntica.
+- CA-05.3 **PASS**: varredura de chaves em **todo o histórico do git** → nenhuma; 8 arquivos obrigatórios rastreados; repositório `PUBLIC`.
+- A correção do Problema #4 (versão do Python) foi verificada e está correta.
+
+### Correção do Problema #5
+
+`pytest==9.1.1` adicionado ao `requirements.txt` (linha 59, em ordem alfabética após `pypdf==6.0.0`). Justificativa para o guardrail do `CLAUDE.md` sobre dependências: não é uma dependência nova do produto, e sim a formalização de uma ferramenta que o projeto já exige em dois lugares — o quality gate do `CLAUDE.md` e a seção de testes do README.
+
+Revalidação do CA-05.1 solicitada ao mesmo avaliador independente.
+
+---
+
+## Revalidação independente (2026-09-03) — veredito final
+
+**Veredito: APPROVED.** F05 promovida a `evaluated`.
+
+O mesmo avaliador independente refez o dry-run do zero — `docker compose down -v`, clone limpo, venv 3.12 novo — e desta vez executou **todos** os comandos do README, sem parar na cadeia do produto.
+
+### Nota de método dele
+
+As correções estavam **não commitadas** na working tree, então um `git clone` puro teria revalidado o código antigo. Ele clonou a branch, aplicou o diff local por cima (90 linhas) e confirmou byte-igualdade em `requirements.txt`, `src/chat.py`, `src/ingest.py`, `src/search.py`, `src/providers.py`, `README.md` e `.env.example` antes de avaliar.
+
+### Evidência do comando que havia reprovado
+
+```
+$ python -m pytest tests/ -q
+....................................                                     [100%]
+36 passed in 11.94s        (EXIT 0)
+```
+
+Executado no clone limpo, com o venv criado pelo README — e, como reforço da prova, **sem nenhum container Postgres de pé** e **antes de o `.env` existir**. A suíte é genuinamente hermética: não depende de banco nem de chave de API.
+
+### Dry-run completo
+
+| Passo do README | Resultado |
+|---|---|
+| `python3 --version` → `3.9.6`, então `python3.12 -m venv venv` | venv `Python 3.12.13` — o caminho alternativo documentado funcionou |
+| `pip install -r requirements.txt` | exit 0, 28 s, **80 pacotes**, 0 erros (`pytest-9.1.1` no log) |
+| `cp .env.example .env` + chave | OK |
+| `docker compose up -d` | healthy; `\dt` → *"Did not find any relations"*; extensão `vector` criada |
+| `python src/ingest.py` | exit 0; SQL → `document_chunks \| 67 \| 3072 \| 3072` |
+| `python src/chat.py` | returncode 0, stderr vazio, chave não vazada; in-context ✅ e 4 armadilhas byte-exatas |
+| `python -m pytest tests/ -q` | **36 passed, exit 0** |
+
+O último bullet do CA-05.1 — *"nenhum passo exige conhecimento que não esteja escrito no README"* — passa a se sustentar.
+
+### Observação registrada por ele (baixa severidade, não é defeito)
+
+O fraseado da resposta in-context varia entre execuções: nesta rodada veio `R$ 722.875.391,46`, na anterior `O faturamento da Alfa Energia S.A. é R$ 722.875.391,46.` — que é a transcrição impressa no README. Variação normal de LLM, e o CA-05.1 pede apenas que a resposta traga conteúdo do documento. Fica o registro porque o README apresenta o bloco como transcrição literal, e um avaliador do desafio pode ver um texto ligeiramente diferente.

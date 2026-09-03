@@ -13,7 +13,10 @@ def processar_pergunta(chain, pergunta: str) -> str:
         resultado = chain.invoke(pergunta)
         return str(resultado)
     except Exception:
-        return "Erro ao consultar o modelo. Verifique sua conexão e a OPENAI_API_KEY."
+        return (
+            "Erro ao consultar o modelo. Verifique sua conexão e a chave do "
+            "provider ativo (OPENAI_API_KEY ou GOOGLE_API_KEY)."
+        )
 
 
 def executar_loop_chat(chain) -> None:

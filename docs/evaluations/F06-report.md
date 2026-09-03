@@ -170,3 +170,30 @@ Correção: `transport="rest"` nas duas fábricas Gemini de `src/providers.py`, 
 | Armadilhas fora do contexto | 4/4 byte-exatas | **4/4 byte-exatas** ✅ |
 
 Restauração de todos os arquivos mutados confirmada por `diff -q` contra o backup original.
+
+---
+
+## Avaliação independente (2026-09-03) — veredito final
+
+A ressalva de independência registrada no topo deste report foi sanada: um avaliador separado, sem participação na implementação, reavaliou a F06 do zero, formando juízo **antes** de ler este documento.
+
+**Veredito: APPROVED.** F06 promovida a `evaluated`.
+
+Ele não reaproveitou nenhuma evidência daqui. Entre o que produziu de forma independente:
+
+- Escreveu o próprio script mockado contra `src.providers` em vez de confiar em `tests/test_providers.py` — 12/12 asserts, sem rede, cobrindo `gemini`, `openai`, `LLM_PROVIDER` ausente e valor inválido nas três funções públicas.
+- Comparou o `PROMPT_TEMPLATE` com o stub original por **AST + SHA-256** (`fe7097c2…15eb73`, 780 chars nos dois) — método diferente do usado aqui, mesmo resultado.
+- Rodou o próprio teste de mutação (modelo de embedding, transporte, `k=10`): todas detectadas.
+- Varreu **todos os blobs de todo o histórico do git** (`git rev-list --objects --all`) atrás de chaves reais → zero. Escopo maior que o `git grep` sobre arquivos rastreados usado aqui.
+- Confirmou stderr **completamente vazio** em execução real com 6 perguntas, validando de forma independente a correção do transporte REST.
+- 9 perguntas fora do contexto no total, comparadas byte a byte contra os bytes UTF-8 esperados.
+
+### Achado adicional dele, fora do texto do contrato
+
+`src/chat.py`, em `processar_pergunta()`, retornava `"Erro ao consultar o modelo. Verifique sua conexão e a OPENAI_API_KEY."` mesmo com `LLM_PROVIDER=gemini` — mandando o usuário do Gemini conferir a variável errada. Ele não reprovou a F06 por isso (nenhum CA-06.x cobre essa string), mas registrou como inconsistente com o espírito do CA-06.4.
+
+Correção aplicada: a mensagem passou a citar "a chave do provider ativo (OPENAI_API_KEY ou GOOGLE_API_KEY)". Reproduzido com `GOOGLE_API_KEY` inválida e confirmado em execução real.
+
+### Limitação que permanece
+
+O caminho `LLM_PROVIDER=openai` **nunca foi exercitado em execução real** — nem por este report, nem pelo avaliador independente — porque a conta OpenAI está sem quota (429). Está coberto por testes unitários mockados, verificados independentemente por ele. É a única parte da F06 sem evidência de execução real.
