@@ -1,9 +1,9 @@
 # Evaluation Report — F03 Busca Semântica e Resposta
 
-- Data: 2026-07-21
+- Data: 2026-07-21 · **reavaliada em 2026-09-03**
 - Avaliador: `evaluator` (independente)
-- Veredito: **BLOCKED** (bloqueio de ambiente — sem quota OpenAI e sem base ingerida; itens de inspeção de código PASSARAM)
-- Gates: 2/2 verdes (`py_compile` exit 0; `pytest` 12/12)
+- Veredito: **APPROVED** na reavaliação (ver seção final). A avaliação original ficou **BLOCKED** por falta de quota na conta OpenAI e base vazia.
+- Gates: 2/2 verdes (`py_compile` exit 0; `pytest` 36/36 na reavaliação — eram 12/12 à época)
 - Método: inspeção de código com evidência executada + tentativa de execução real. Chave jamais impressa.
 
 ## Pré-requisitos de ambiente
@@ -44,3 +44,27 @@ e retornou `None` (contrato do stub do chat respeitado, sem traceback).
 - Após resolver a quota: reexecutar SOMENTE os blocos bloqueados (CA-03.1, CA-03.2 e as 3+ perguntas armadilha) — CA-03.3/CA-03.4 já têm evidência definitiva.
 - Status permanece `implemented` até a reavaliação completa.
 - Perguntas dentro-do-contexto sugeridas para a reavaliação (derivadas do PDF real): faturamento da Alfa Energia S.A.; ano de fundação da Alfa Agronegócio Indústria (1931).
+
+
+---
+
+## Reavaliação (2026-09-03)
+
+Base populada (67 chunks, 3072 dimensões, provider Gemini). Executada com o comando literal do gate do contrato.
+
+| Item | Resultado | Evidência |
+|---|---|---|
+| **CA-03.1** | ✅ **PASS** | `search_prompt('Qual o faturamento da Alfa Energia S.A.?')` → `O faturamento da Alfa Energia S.A. é R$ 722.875.391,46.` — string não vazia, sem exceção. **Verdade de referência conferida contra o documento por SQL**, não contra a palavra do LLM: `SELECT regexp_matches(document, ...)` sobre a collection devolve `Alfa Energia S.A. R$ 722.875.391,46 1972`. Nenhuma informação ausente do PDF na resposta |
+| **CA-03.2** | ✅ **PASS** | Comparação byte a byte em Python (`resposta == FRASE`): `'Qual é a capital da França?'` → `True`; `'Você acha isso bom ou ruim?'` → `True`. Sem texto adicional |
+| **CA-03.3** | ✅ **PASS** | `src/search.py:118` → `similarity_search_with_score(pergunta, k=10)`; `tests/test_search.py:97` afirma `k=10` na chamada; `PROMPT_TEMPLATE` comparado programaticamente com `git show adfb91f:src/search.py` → **byte-idêntico** |
+| **CA-03.4** | ✅ **PASS** na substância | `src/ingest.py:65` e `src/search.py:102` chamam a **mesma** função `criar_embeddings()`; grep por literais de modelo em `ingest.py`/`search.py` → **nenhum** (nada hardcoded); o modelo vem de `OPENAI_EMBEDDING_MODEL` ou `GOOGLE_EMBEDDING_MODEL` em `src/providers.py`; `.env.example:16` define `text-embedding-3-small`. **Prova em runtime:** a busca recuperou corretamente vetores gravados na ingestão — se os modelos divergissem, haveria erro de dimensão ou resultados sem sentido |
+
+### Nota sobre o texto do contrato (CA-03.4)
+
+O contrato exige literalmente que "ambos criam `OpenAIEmbeddings` lendo a MESMA variável `OPENAI_EMBEDDING_MODEL`". Após a F06 isso deixou de ser literalmente verdadeiro: os dois chamam `providers.criar_embeddings()`, que decide a classe conforme `LLM_PROVIDER`.
+
+Avaliado como PASS porque a **exigência substantiva** — mesmo modelo de embedding nas duas pontas, sem hardcode — não só é atendida como passou a ser garantida por construção, e não mais por coincidência entre dois trechos de código. Recomenda-se ao `spec-writer` atualizar a redação para refletir a fábrica de providers.
+
+### Problemas da avaliação original
+
+- **#1 (sem quota OpenAI + collection vazia):** **RESOLVIDO** pela F06 (provider Gemini) e pela ingestão bem-sucedida.

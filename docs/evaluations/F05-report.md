@@ -1,9 +1,9 @@
 # Evaluation Report — F05 README e Entrega
 
-- Data: 2026-07-22
+- Data: 2026-07-22 · **reavaliada em 2026-09-03**
 - Avaliador: `evaluator` (independente)
-- Veredito: **BLOCKED** (motivo único: bloqueio de ambiente impede o dry-run real da CA-05.1. O defeito de documentação da CA-05.2 foi **CORRIGIDO e re-verificado** nesta sessão — ver "Atualização pós-correção")
-- Gates: 2/2 verdes (`py_compile` exit 0; `pytest` 26/26)
+- Veredito: **REJECTED** na reavaliação. O dry-run da CA-05.1 finalmente pôde ser executado e **falhou**: seguindo o README literalmente, a instalação de dependências quebra. CA-05.2 e CA-05.3 passam. Ver seção final.
+- Gates: 2/2 verdes (`py_compile` exit 0; `pytest` 36/36 na reavaliação — eram 26/26 à época)
 - Método: inspeção de conteúdo + verificações determinísticas reais (git index, `git grep`, `gh`, match byte-exato). Nenhuma chave impressa (valores mascarados).
 
 ## Pré-requisitos de ambiente
@@ -55,3 +55,79 @@ Após o veredito, o usuário autorizou aplicar a correção aconselhada (Opção
 - **Destravar o ambiente e reexecutar a CA-05.1** num clone limpo, seguindo o README ao pé da letra, com uma pergunta in-context (ex.: "Qual o faturamento da Alfa Energia S.A.?" → R$ 722.875.391,46) e ≥3 armadilhas esperando exatamente a frase-padrão.
 - **CA-05.3 já tem evidência definitiva** (repo limpo, público, sem segredos) — não precisa reexecutar.
 - **Status permanece `implemented`** — sem promoção a `evaluated` enquanto a CA-05.1 estiver bloqueada e o achado nº 1 não for corrigido.
+
+
+---
+
+## Reavaliação (2026-09-03)
+
+O dry-run da CA-05.1, que nunca havia sido possível, foi executado de verdade: **clone limpo do GitHub, venv novo, banco zerado com `docker compose down -v`**, seguindo apenas os comandos do README.
+
+> Nota de método: o clone foi feito da branch `feature/f06-provider-gemini`, porque a `main` ainda não contém a F06. Um avaliador que clone a `main` hoje recebe o código anterior à feature, que depende da conta OpenAI sem quota.
+
+| Item | Resultado | Evidência |
+|---|---|---|
+| **CA-05.1** | ❌ **FAIL** | Ver Problema #4 abaixo. Os demais passos do README funcionam — comprovado na segunda tentativa |
+| **CA-05.2** | ✅ **PASS** | Pré-requisitos (Docker/Compose, Python, chave OpenAI **ou** Google), venv + `pip install -r requirements.txt`, `cp .env.example .env`, **as 10 variáveis do `.env.example` explicadas** (0 não-documentadas), ordem de execução literal, e exemplos `PERGUNTA:`/`RESPOSTA:` dentro e fora do contexto com a frase padrão byte-exata. Nenhuma chave real no arquivo |
+| **CA-05.3** | ✅ **PASS** | `git ls-files \| grep -E '(^\|/)\.env$\|^venv/\|^pgdata/'` → **vazio**; os 8 arquivos obrigatórios rastreados; `git grep -nE 'sk-(proj-)?[A-Za-z0-9]{24,}\|AIza[A-Za-z0-9_-]{30,}'` sobre todos os versionados → **nenhuma** chave real; `gh repo view` → **PUBLIC** |
+
+### Problema #4 — [BLOQUEANTE — CA-05.1] O README promete Python 3.10+, mas as dependências exigem 3.11+
+
+Seguindo o README literalmente numa máquina limpa:
+
+```
+$ python3 -m venv venv
+$ source venv/bin/activate
+$ pip install -r requirements.txt
+ERROR: Could not find a version that satisfies the requirement numpy==2.3.2
+ERROR: No matching distribution found for numpy==2.3.2
+
+$ python src/ingest.py
+ModuleNotFoundError: No module named 'dotenv'
+```
+
+- `numpy==2.3.2` (`requirements.txt:41`) declara `requires_python: >=3.11` (consultado na API do PyPI). O README anuncia **"Python 3.10+"** em dois lugares (linhas 9 e 29). Quem usar 3.10 — exatamente o mínimo prometido — **não consegue instalar**.
+- Agravante nesta máquina: `python3` resolve para `/usr/bin/python3` = **Python 3.9.6**. O comando do README cria um venv 3.9, o `pip install` falha parcialmente (apenas 4 dos 78 pacotes) e a execução morre com `ModuleNotFoundError`. O `pip` do venv 3.9 é a versão 21.2.4, antiga.
+- O venv do projeto funciona porque foi criado pelo **`uv`** com um CPython 3.12.13 em `~/.local/share/uv/python/...`, que **não está no PATH** como `python3.12`. Ou seja: o próprio ambiente de desenvolvimento não é reproduzível pelos comandos do README.
+- **Severidade:** ALTA. É a primeira coisa que um avaliador executa, e falha antes de qualquer código do projeto rodar.
+- **Reproduzir:** clone limpo → `python3 -m venv venv` com `python3` ≤ 3.10 → `pip install -r requirements.txt`.
+- **Correção sugerida:** anunciar **Python 3.12** (versão em que o projeto é comprovadamente funcional) nas linhas 9 e 29 do README, e considerar instruir `python3.12 -m venv venv` com uma nota sobre como verificar a versão (`python3 --version`).
+
+### O restante do fluxo do README funciona
+
+Repetido o dry-run com Python 3.12.13 e o mesmo clone limpo:
+
+| Passo | Resultado |
+|---|---|
+| `pip install -r requirements.txt` | exit 0, **78 pacotes**, 0 erros |
+| `cp .env.example .env` + preencher chave | `.env.example` autoexplicativo; bastou `LLM_PROVIDER=gemini` e `GOOGLE_API_KEY` |
+| `docker compose up -d` | `postgres_rag` healthy; extensão `vector 0.8.5` criada automaticamente em volume novo |
+| `python src/ingest.py` | **EXIT=0**, `Ingestão concluída: 67 chunks armazenados na collection 'document_chunks'.` |
+| `python src/chat.py` | Pergunta do PDF → `RESPOSTA: O faturamento da Alfa Energia S.A. é R$ 722.875.391,46.`; fora do contexto → frase padrão exata; **EXIT=0**, stderr vazio, 0 traceback |
+
+Nenhum passo exigiu conhecimento fora do README — **exceto** a versão do Python, que é justamente o Problema #4.
+
+Ambiente restaurado ao final: clone apagado (continha `.env` com chave real), volume do dry-run removido, projeto principal reingerido (67 chunks, 3072d).
+
+### Recomendações
+
+1. Corrigir o Problema #4 (uma linha em dois lugares do README). Depois disso, a F05 deve passar sem ressalvas.
+2. **Fazer o merge da F06 na `main`** antes da entrega: hoje um avaliador que clone a `main` recebe código que depende de uma conta OpenAI sem quota.
+
+---
+
+## Correção do Problema #4 (2026-09-03, pós-reavaliação)
+
+Aplicada após o veredito REJECTED acima. **O veredito permanece como resultado da reavaliação**; a promoção a `evaluated` depende de uma verificação independente.
+
+A correção não se limitou a trocar o número da versão. Só isso não resolveria a falha: o leitor continuaria digitando `python3 -m venv venv`, e numa máquina onde `python3` é 3.9 o comando seguiria criando um venv quebrado, sem aviso.
+
+Mudanças no `README.md`:
+
+1. Linha 9 e 29: **"Python 3.10+" → "Python 3.12"**, com a razão explícita (`numpy==2.3.2` exige ≥3.11).
+2. Passo 2 passou a começar por `python3 --version`, para o leitor descobrir o que o comando resolve na máquina dele **antes** de criar o venv.
+3. Dois caminhos documentados: `python3 -m venv venv` se a versão for ≥3.11; `python3.12 -m venv venv` caso contrário, com a menção de que em muitos macOS o `python3` do sistema ainda é 3.9 e de que o sintoma da escolha errada é a falha em `numpy==2.3.2`.
+
+Verificação: `grep "3\.10"` no README → **nenhuma ocorrência**. A configuração que o README agora anuncia (Python 3.12) é exatamente a que foi executada de ponta a ponta no dry-run desta reavaliação — clone limpo, banco zerado, 78 pacotes instalados sem erro, ingestão de 67 chunks e chat respondendo corretamente dentro e fora do contexto.
+
+Limitação registrada: nesta máquina de desenvolvimento nem `python3.12` está no PATH (o interpretador é gerenciado pelo `uv`, fora dele). Numa instalação convencional de Python 3.12 — python.org ou Homebrew — o comando existe. O README está correto para a máquina de um avaliador; esta máquina é o caso atípico.

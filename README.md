@@ -6,7 +6,7 @@ Sistema RAG (*Retrieval-Augmented Generation*) desenvolvido como desafio prátic
 
 ## 🚀 Arquitetura e Tecnologias
 
-- **Linguagem**: Python 3.10+
+- **Linguagem**: Python 3.12
 - **Framework de IA**: [LangChain](https://python.langchain.com/) (`langchain_openai`, `langchain_google_genai`, `langchain_postgres`, `langchain_text_splitters`)
 - **Banco de Dados**: PostgreSQL 17 + extensão `pgVector`
 - **Infraestrutura**: Docker & Docker Compose
@@ -26,7 +26,7 @@ Antes de iniciar, certifique-se de ter instalado em sua máquina:
 
 - [Git](https://git-scm.com/)
 - [Docker](https://www.docker.com/) e [Docker Compose](https://docs.docker.com/compose/)
-- [Python 3.10+](https://www.python.org/)
+- [Python 3.12](https://www.python.org/) — as dependências pinadas em `requirements.txt` exigem **3.11 ou superior** (`numpy==2.3.2`). Confira a sua versão com `python3 --version` antes de continuar
 - Uma chave de API ativa de **um** destes providers:
   - [OpenAI](https://platform.openai.com/) → `OPENAI_API_KEY` (padrão), **ou**
   - [Google AI Studio](https://aistudio.google.com/apikey) → `GOOGLE_API_KEY` (alternativa)
@@ -44,8 +44,23 @@ cd mba-ia-desafio-ingestao-busca
 
 ### 2. Criar e Ativar o Ambiente Virtual (venv)
 
+Confirme primeiro qual versão o comando `python3` resolve na sua máquina:
+
+```bash
+python3 --version
+```
+
+Se for **3.11 ou superior**:
+
 ```bash
 python3 -m venv venv
+source venv/bin/activate
+```
+
+Se for anterior (em muitos macOS o `python3` do sistema ainda é 3.9), use explicitamente um interpretador 3.12 — senão o `pip install` do próximo passo falha em `numpy==2.3.2`:
+
+```bash
+python3.12 -m venv venv
 source venv/bin/activate
 ```
 

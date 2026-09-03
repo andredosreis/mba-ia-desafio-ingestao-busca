@@ -33,7 +33,7 @@
       "id": "F02",
       "name": "Ingestão do PDF",
       "wave": 2,
-      "status": "implemented",
+      "status": "evaluated",
       "dependsOn": ["F01"],
       "tags": ["ingestao", "embeddings", "pipeline"],
       "specDir": "docs/features/F02-ingestao",
@@ -44,7 +44,7 @@
       "id": "F03",
       "name": "Busca Semântica e Resposta",
       "wave": 2,
-      "status": "implemented",
+      "status": "evaluated",
       "dependsOn": ["F01"],
       "tags": ["busca", "rag", "llm", "prompt"],
       "specDir": "docs/features/F03-busca",
@@ -55,7 +55,7 @@
       "id": "F04",
       "name": "CLI de Chat",
       "wave": 3,
-      "status": "implemented",
+      "status": "evaluated",
       "dependsOn": ["F02", "F03"],
       "tags": ["cli", "ux"],
       "specDir": "docs/features/F04-cli-chat",
@@ -71,7 +71,8 @@
       "tags": ["docs", "entrega"],
       "specDir": "docs/features/F05-readme-entrega",
       "acceptanceCriteria": ["CA-05.1", "CA-05.2", "CA-05.3"],
-      "deliverables": ["README.md"]
+      "deliverables": ["README.md"],
+      "notes": "Reavaliada em 2026-09-03: veredito REJECTED. CA-05.2 e CA-05.3 PASS. CA-05.1 FALHA: o README anuncia Python 3.10+, mas numpy==2.3.2 exige >=3.11 — seguindo o README literalmente o pip install quebra e o projeto nao roda. O restante do fluxo foi validado em dry-run com clone limpo e Python 3.12 (banco zerado, ingestao 67 chunks, chat correto). Ver docs/evaluations/F05-report.md, Problema #4."
     },
     {
       "id": "F06",
