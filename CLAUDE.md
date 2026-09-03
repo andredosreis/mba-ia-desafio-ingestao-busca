@@ -28,7 +28,7 @@ Regras do fluxo:
 - Parar o banco: `docker compose down` (com `-v` para limpar dados)
 - Ambiente virtual: `python3 -m venv venv && source venv/bin/activate`
 - Dependências: `pip install -r requirements.txt` (já pinado pelo template — não repinar versões)
-- Variáveis: `cp .env.example .env` e preencher `OPENAI_API_KEY` (convenção de nomes do template: `OPENAI_EMBEDDING_MODEL`, `OPENAI_MODEL`, `DATABASE_URL`, `PG_VECTOR_COLLECTION_NAME`, `PDF_PATH`)
+- Variáveis: `cp .env.example .env` e preencher a chave do provider ativo — `OPENAI_API_KEY` (padrão) ou `GOOGLE_API_KEY` (se `LLM_PROVIDER=gemini`). Convenção de nomes do template: `OPENAI_EMBEDDING_MODEL`, `OPENAI_MODEL`, `DATABASE_URL`, `PG_VECTOR_COLLECTION_NAME`, `PDF_PATH`; acrescidas de `LLM_PROVIDER`, `GOOGLE_EMBEDDING_MODEL`, `GOOGLE_MODEL`
 - Ordem de execução do produto: `docker compose up -d` → `python src/ingest.py` → `python src/chat.py`
 
 ## Restrições Obrigatórias do Enunciado (NÃO ALTERAR)
@@ -37,13 +37,12 @@ Estas regras vêm do enunciado do desafio e são inegociáveis:
 
 - Linguagem **Python** com framework **LangChain**; banco **PostgreSQL + pgVector** via Docker Compose.
 - Split: `RecursiveCharacterTextSplitter` com `chunk_size=1000` e `chunk_overlap=150`.
-- Embeddings: `text-embedding-3-small` (OpenAI). O MESMO modelo na ingestão e na busca.
+- Embeddings e LLM: **dois providers permitidos**, selecionados por `LLM_PROVIDER` (`openai` é o default). OpenAI → `text-embedding-3-small` + `OPENAI_MODEL` (enunciado sugere `gpt-5-nano`); Gemini → `models/gemini-embedding-001` + `gemini-2.5-flash`. **Inviolável em qualquer provider:** o MESMO modelo de embedding na ingestão e na busca — garantido por `src/providers.py`, a fábrica única consumida pelos dois lados. Não instanciar classes de embedding/LLM direto em `ingest.py` ou `search.py`.
 - Busca: `similarity_search_with_score(query, k=10)`.
-- LLM de resposta: modelo definido em `OPENAI_MODEL` no `.env` (enunciado sugere `gpt-5-nano`).
 - O prompt de resposta é FIXO — já vem pronto no stub `src/search.py` como `PROMPT_TEMPLATE` (placeholders `{contexto}` e `{pergunta}`). Não reescrever, não "melhorar".
 - Respeitar os contratos dos stubs do template: `src/search.py` expõe `search_prompt()` (consumido por `src/chat.py`), `src/ingest.py` expõe `ingest_pdf()` e lê `PDF_PATH` do `.env`.
 - Perguntas fora do contexto devem responder exatamente: `"Não tenho informações necessárias para responder sua pergunta."`
-- Estrutura obrigatória: `docker-compose.yml`, `requirements.txt`, `.env.example`, `src/ingest.py`, `src/search.py`, `src/chat.py`, `document.pdf`, `README.md`.
+- Estrutura obrigatória: `docker-compose.yml`, `requirements.txt`, `.env.example`, `src/ingest.py`, `src/search.py`, `src/chat.py`, `document.pdf`, `README.md`. (`src/providers.py` é um helper adicional — a lista é o mínimo exigido, não um teto.)
 
 ## Code Style
 
@@ -73,7 +72,7 @@ Rodar antes de marcar qualquer feature como implementada:
 
 ## Guardrails
 
-- **NUNCA** commitar `.env` ou expor a `OPENAI_API_KEY` (nem em logs, nem em output).
+- **NUNCA** commitar `.env` ou expor a `OPENAI_API_KEY`/`GOOGLE_API_KEY` (nem em logs, nem em output).
 - Não alterar os parâmetros obrigatórios do enunciado (chunk, overlap, k, modelos, prompt).
 - Não adicionar dependências fora do ecossistema LangChain/psycopg sem justificar no PRD.
 - O sistema NUNCA deve responder com conhecimento externo ao PDF — esse é o critério central de aceitação do desafio.

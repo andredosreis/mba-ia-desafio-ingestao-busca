@@ -6,11 +6,15 @@ from langchain_core.documents import Document
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import PromptTemplate
 from langchain_core.runnables import Runnable, RunnableLambda, RunnablePassthrough
-from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_postgres import PGVector
 from psycopg import OperationalError as PsycopgOperationalError
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import OperationalError as SQLAlchemyOperationalError
+
+try:
+    from providers import criar_chat_llm, criar_embeddings
+except ImportError:  # importado como pacote `src` (pytest)
+    from src.providers import criar_chat_llm, criar_embeddings
 
 load_dotenv()
 
@@ -85,24 +89,17 @@ def criar_vector_store_para_busca() -> PGVector:
     """PGVector sem pre_delete_collection."""
     connection = os.getenv("DATABASE_URL")
     collection_name = os.getenv("PG_VECTOR_COLLECTION_NAME")
-    embedding_model = os.getenv("OPENAI_EMBEDDING_MODEL")
 
     for var_name, var_val in [
         ("DATABASE_URL", connection),
         ("PG_VECTOR_COLLECTION_NAME", collection_name),
-        ("OPENAI_EMBEDDING_MODEL", embedding_model),
     ]:
         if not var_val:
             raise ValueError(f"Erro: variável {var_name} não definida no .env.")
 
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key or api_key == "sk-sua-chave-aqui":
-        raise ValueError(
-            "Erro: OPENAI_API_KEY não configurada no .env "
-            "(substitua o placeholder por uma chave real)."
-        )
-
-    embeddings = OpenAIEmbeddings(model=embedding_model)
+    # MESMA fábrica usada por src/ingest.py — os vetores da busca precisam ser
+    # do mesmo provider/modelo dos vetores gravados na ingestão.
+    embeddings = criar_embeddings()
     return PGVector(
         embeddings=embeddings,
         collection_name=collection_name,
@@ -113,10 +110,8 @@ def criar_vector_store_para_busca() -> PGVector:
 
 def criar_chain_rag() -> Runnable:
     """Monta a chain LCEL: busca k=10 -> prompt fixo -> LLM -> str."""
-    model_name = os.getenv("OPENAI_MODEL")
-    if not model_name:
-        raise ValueError("Erro: variável OPENAI_MODEL não definida no .env.")
-
+    # LLM primeiro: valida provider e credencial antes de tocar no banco.
+    llm = criar_chat_llm()
     vector_store = criar_vector_store_para_busca()
 
     def buscar_e_montar_contexto(pergunta: str) -> str:
@@ -124,7 +119,6 @@ def criar_chain_rag() -> Runnable:
         return montar_contexto(resultados)
 
     prompt = PromptTemplate.from_template(PROMPT_TEMPLATE)
-    llm = ChatOpenAI(model=model_name)
 
     chain = (
         {

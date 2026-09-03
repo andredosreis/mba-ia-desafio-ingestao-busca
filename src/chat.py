@@ -40,7 +40,7 @@ def main() -> None:
 
     if not chain:
         print("Não foi possível iniciar o chat. Verifique os erros de inicialização.")
-        print("Passos: 1) docker compose up -d  2) configure o .env (OPENAI_API_KEY)  3) python src/ingest.py")
+        print("Passos: 1) docker compose up -d  2) configure o .env (OPENAI_API_KEY ou GOOGLE_API_KEY)  3) python src/ingest.py")
         return
 
     if not verificar_colecao_populada():

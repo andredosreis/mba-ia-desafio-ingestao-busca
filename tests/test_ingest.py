@@ -49,9 +49,10 @@ def test_criar_vector_store_para_ingestao():
             "PG_VECTOR_COLLECTION_NAME": "test_collection",
             "OPENAI_EMBEDDING_MODEL": "text-embedding-3-small",
             "OPENAI_API_KEY": "sk-fake-para-teste",
+            "LLM_PROVIDER": "openai",
         },
     ), patch("src.ingest.PGVector") as mock_pgvector, patch(
-        "src.ingest.OpenAIEmbeddings"
+        "src.providers.OpenAIEmbeddings"
     ) as mock_embeddings:
         store = criar_vector_store_para_ingestao()
 
@@ -119,6 +120,7 @@ def test_ingest_pdf_trata_banco_fora_do_ar_via_cadeia_de_causas(capsys):
             "PG_VECTOR_COLLECTION_NAME": "test_collection",
             "OPENAI_EMBEDDING_MODEL": "text-embedding-3-small",
             "OPENAI_API_KEY": "sk-fake-para-teste",
+            "LLM_PROVIDER": "openai",
         },
     ), patch(
         "src.ingest.carregar_paginas_pdf",
@@ -128,7 +130,7 @@ def test_ingest_pdf_trata_banco_fora_do_ar_via_cadeia_de_causas(capsys):
         return_value=[Document(page_content="Texto de teste")],
     ), patch(
         "src.ingest.PGVector", side_effect=levantar_erro_embrulhado
-    ), patch("src.ingest.OpenAIEmbeddings"):
+    ), patch("src.providers.OpenAIEmbeddings"):
         with pytest.raises(SystemExit) as exc_info:
             ingest_pdf()
 

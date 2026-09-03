@@ -71,9 +71,10 @@ def test_busca_k10_literal_e_chain_rag():
             "OPENAI_EMBEDDING_MODEL": "text-embedding-3-small",
             "OPENAI_MODEL": "gpt-5-nano",
             "OPENAI_API_KEY": "sk-fake-para-teste",
+            "LLM_PROVIDER": "openai",
         },
     ), patch("src.search.PGVector") as mock_pgvector, patch(
-        "src.search.ChatOpenAI"
+        "src.providers.ChatOpenAI"
     ) as mock_chat:
         mock_store = MagicMock()
         mock_pgvector.return_value = mock_store

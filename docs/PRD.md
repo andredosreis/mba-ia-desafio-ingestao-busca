@@ -53,6 +53,8 @@ Software de RAG (Retrieval-Augmented Generation) em linha de comando: ingere um 
 | Base de código | Fork do template oficial `devfullcycle/mba-ia-desafio-ingestao-busca` |
 | Resposta fora de contexto | Exatamente: `"Não tenho informações necessárias para responder sua pergunta."` |
 
+> **Provider de IA — OpenAI (padrão) ou Gemini (alternativa permitida pelo enunciado).** O provider é selecionável pela variável `LLM_PROVIDER` (`openai` | `gemini`; default `openai`). Os modelos são específicos de cada provider — **OpenAI:** embeddings `text-embedding-3-small` (1536d) + LLM `OPENAI_MODEL`; **Gemini:** embeddings `gemini-embedding-001` (3072d) + LLM `gemini-2.5-flash`. As demais restrições valem **igualmente para os dois**: split `1000/150`, `similarity_search_with_score(k=10)`, `PROMPT_TEMPLATE` fixo, **mesmo modelo de embedding na ingestão e na busca**, e a frase-padrão exata. Como as dimensões diferem (1536 vs 3072), **trocar de provider exige re-ingestão** (a coleção é recriada por `pre_delete_collection`). Escopo detalhado na feature **F06**.
+
 ### Estrutura obrigatória do repositório
 
 ```
@@ -113,7 +115,9 @@ Módulos (contratos herdados dos stubs do template — manter assinaturas):
 - `src/search.py` — busca + montagem de prompt + chamada da LLM. Já contém o `PROMPT_TEMPLATE` obrigatório (placeholders `{contexto}` e `{pergunta}`); expõe `search_prompt(question=None)`, que retorna a chain consumida pelo chat.
 - `src/chat.py` — loop de CLI (executável); importa `search_prompt` de `search.py`.
 
-Variáveis de ambiente (convenção do template): `OPENAI_API_KEY`, `OPENAI_EMBEDDING_MODEL`, `OPENAI_MODEL`, `DATABASE_URL`, `PG_VECTOR_COLLECTION_NAME`, `PDF_PATH` (e `GOOGLE_*` como alternativa não usada).
+Variáveis de ambiente (convenção do template): `OPENAI_API_KEY`, `OPENAI_EMBEDDING_MODEL`, `OPENAI_MODEL`, `DATABASE_URL`, `PG_VECTOR_COLLECTION_NAME`, `PDF_PATH`; e, para o provider Gemini (F06): `LLM_PROVIDER`, `GOOGLE_API_KEY`, `GOOGLE_EMBEDDING_MODEL`, `GOOGLE_MODEL`.
+
+A seleção de provider é interna aos módulos (leem `LLM_PROVIDER` do ambiente) — as assinaturas públicas `ingest_pdf()` e `search_prompt(question=None)` **não mudam** com o provider.
 
 ## 6. Features
 
@@ -174,6 +178,18 @@ Documentação final e preparação do repositório público.
 - CA-05.2 — O README documenta: pré-requisitos, criação do venv, `.env`, ordem de execução (`docker compose up -d` → `ingest.py` → `chat.py`) e exemplos de perguntas dentro/fora do contexto.
 - CA-05.3 — O repositório público não contém `.env`, `venv/` nem dados locais (`pgdata/`).
 
+### F06 — Suporte a Provider Gemini (alternativa à OpenAI)
+
+Camada de seleção de provider de IA por variável de ambiente, permitindo rodar todo o pipeline (ingestão + busca) com **Gemini** quando a conta OpenAI estiver indisponível — alternativa explicitamente permitida pelo enunciado. As assinaturas públicas dos stubs e todas as restrições estruturais do enunciado são preservadas; muda apenas qual provider de embeddings/LLM é instanciado internamente.
+
+**Entregas:** `src/ingest.py` e `src/search.py` com seleção de provider (`LLM_PROVIDER`); `.env.example` e `README.md` atualizados; `CLAUDE.md`/PRD ajustados para refletir os dois providers; testes unitários da seleção (mockados, sem rede).
+
+**Critérios de aceitação:**
+- CA-06.1 — Dado `LLM_PROVIDER=gemini`, quando instancio os componentes de ingestão/busca, então são usados `GoogleGenerativeAIEmbeddings` (`gemini-embedding-001`) e `ChatGoogleGenerativeAI` (`gemini-2.5-flash`); dado `LLM_PROVIDER=openai` ou ausente (default), são usados `OpenAIEmbeddings` (`text-embedding-3-small`) e `ChatOpenAI` (`OPENAI_MODEL`). Verificável por teste unitário mockado, sem rede.
+- CA-06.2 — Em ambos os providers mantêm-se `chunk_size=1000`/`chunk_overlap=150`, `similarity_search_with_score(query, k=10)`, o `PROMPT_TEMPLATE` fixo intocado, o mesmo modelo de embedding na ingestão e na busca, e a frase-padrão exata para perguntas fora do contexto. As assinaturas `ingest_pdf()` e `search_prompt(question=None)` não mudam.
+- CA-06.3 — Dado o banco de pé e `LLM_PROVIDER=gemini`, quando executo `python src/ingest.py`, então a ingestão conclui com embeddings Gemini (3072d) persistidos; quando pergunto algo presente no PDF via `chat.py`, recebo resposta baseada no documento; quando pergunto algo fora do contexto, recebo exatamente a frase-padrão. (Execução real — verificada pelo evaluator.)
+- CA-06.4 — `.env.example` e `README.md` documentam `LLM_PROVIDER`, `GOOGLE_API_KEY`, `GOOGLE_EMBEDDING_MODEL`, `GOOGLE_MODEL`; `CLAUDE.md`/PRD refletem os dois providers permitidos; nenhuma chave real é versionada; a troca de provider e a necessidade de re-ingestão (dimensões 1536↔3072) estão documentadas.
+
 ## 7. Ordem de Execução (Waves)
 
 | Wave | Features | Justificativa |
@@ -182,6 +198,7 @@ Documentação final e preparação do repositório público.
 | 2 | F02, F03 | Dependem só da F01; F03 pode ser testada unitariamente com mocks antes da ingestão real |
 | 3 | F04 | Consome F03 |
 | 4 | F05 | Documenta o conjunto completo |
+| 5 | F06 | Aditivo: provider Gemini alternativo, sobre F02/F03 já implementadas |
 
 ## 8. Métricas de Sucesso
 
@@ -194,6 +211,8 @@ Documentação final e preparação do repositório público.
 | Risco | Mitigação |
 |---|---|
 | `gpt-5-nano` indisponível na conta | Modelo configurável via `OPENAI_MODEL`; fallback `gpt-4o-mini` |
+| Conta OpenAI sem quota (`429 insufficient_quota`) | Provider Gemini alternativo (F06), selecionável por `LLM_PROVIDER=gemini` |
+| Mismatch de dimensão do embedding (1536 vs 3072) ao trocar de provider | Re-ingestão obrigatória após trocar `LLM_PROVIDER` — a coleção é recriada por `pre_delete_collection`; documentado no README (F06) |
 | Porta 5432 ocupada por Postgres local | Parar o serviço local ou ajustar mapeamento de porta + `DATABASE_URL` |
 | LLM ignora as regras e alucina | Prompt fixo do enunciado + verificação do evaluator com perguntas armadilha |
 | Ingestões repetidas duplicando dados | Recriar a coleção a cada ingestão (CA-02.2) |
