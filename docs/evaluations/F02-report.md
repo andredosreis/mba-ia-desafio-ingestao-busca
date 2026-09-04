@@ -1,9 +1,9 @@
 # Evaluation Report — F02 Ingestão do PDF
 
-- Data: 2026-07-21
+- Data: 2026-07-21 · **reavaliada em 2026-09-03**
 - Avaliador: `evaluator` (independente)
-- Veredito: **BLOCKED** (bloqueio de ambiente — conta OpenAI sem quota; não é defeito de código)
-- Gates: 2/2 verdes (`py_compile` exit 0; `pytest` 12/12)
+- Veredito: **APPROVED** na reavaliação (ver seção final). A avaliação original ficou **BLOCKED** por falta de quota na conta OpenAI — bloqueio de ambiente removido ao rodar com o provider Gemini da F06.
+- Gates: 2/2 verdes (`py_compile` exit 0; `pytest` 36/36 na reavaliação — eram 12/12 à época)
 - Método: execução real (Docker + banco real + chave real); nenhum mock. Chave jamais impressa.
 
 ## Pré-requisitos de ambiente
@@ -39,3 +39,27 @@ N/A nesta feature (pertencem à avaliação de F03/F04 — exigem pipeline de bu
 - Adicionar créditos à conta OpenAI e **reexecutar esta avaliação** para CA-02.1/CA-02.2 (os únicos itens pendentes).
 - Status permanece `implemented` (sem promoção a `evaluated` até os blocos bloqueados passarem).
 - O comportamento correto dos handlers de erro (CA-02.3) já está comprovado em execução real — na reavaliação, apenas os dois blocos de ingestão precisam rodar.
+
+
+---
+
+## Reavaliação (2026-09-03)
+
+Refeita com `LLM_PROVIDER=gemini` (F06), banco real e `document.pdf` real. Todos os blocos que estavam BLOCKED foram executados.
+
+| Item | Resultado | Evidência |
+|---|---|---|
+| **CA-02.1** | ✅ **PASS** | `venv/bin/python src/ingest.py` → `Ingestão concluída: 67 chunks armazenados na collection 'document_chunks'.`, **EXIT=0**, stderr vazio, 0 traceback. SQL do contrato: `count(*)` = **67** (> 0); `max(length(document))` = **999** (≤ 1000); `count(*) FILTER (WHERE embedding IS NULL)` = **0** |
+| **CA-02.2** | ✅ **PASS** | Segunda execução → EXIT=0 e a mesma query retorna **67** (não 134). A collection é recriada (`pre_delete_collection=True`), não acumulada |
+| **CA-02.3a** | ✅ **PASS** | `PDF_PATH=arquivo_inexistente.pdf venv/bin/python src/ingest.py` → **EXIT=1**, stderr: `Erro: arquivo PDF não encontrado em 'arquivo_inexistente.pdf'. Verifique PDF_PATH no .env.`, **0 traceback** |
+| **CA-02.3b** | ✅ **PASS** | Com `docker compose stop postgres` → **EXIT=1**, stderr: `Erro: não foi possível conectar ao banco. Suba-o com: docker compose up -d`, **0 traceback**, 0 vazamento de chave. Banco religado após o teste |
+
+### Problemas da avaliação original
+
+- **#1 (bloqueio de ambiente — quota OpenAI):** **RESOLVIDO**, não por correção de código, mas pela F06, que permite rodar o pipeline com Gemini.
+- **#2 (`Collection not found` no stdout):** **PERSISTE**. Reapareceu na primeira ingestão contra um banco recém-criado. É uma linha em inglês impressa pela biblioteca `langchain_postgres`, não pelo projeto. Severidade BAIXA: o contrato exige que a saída informe sucesso e o número de chunks — o que ocorre — mas polui a primeira execução, que é justamente a que o avaliador do desafio vai ver.
+- **#3 (erros de API repassados em inglês):** não reincidiu nesta rodada.
+
+### Nota sobre o texto do contrato
+
+Os pré-requisitos deste contrato exigem nominalmente `OPENAI_API_KEY` real e `OPENAI_EMBEDDING_MODEL=text-embedding-3-small`. O contrato é anterior à F06. A substância — chave real do provider ativo e modelo de embedding definido por variável de ambiente — foi atendida com o provider Gemini. Recomenda-se ao `spec-writer` generalizar o texto para "chave do provider ativo".

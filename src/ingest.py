@@ -4,11 +4,15 @@ from dotenv import load_dotenv
 
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_core.documents import Document
-from langchain_openai import OpenAIEmbeddings
 from langchain_postgres import PGVector
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from psycopg import OperationalError as PsycopgOperationalError
 from sqlalchemy.exc import OperationalError as SQLAlchemyOperationalError
+
+try:
+    from providers import criar_embeddings
+except ImportError:  # importado como pacote `src` (pytest)
+    from src.providers import criar_embeddings
 
 load_dotenv()
 
@@ -48,24 +52,17 @@ def criar_vector_store_para_ingestao() -> PGVector:
     """PGVector com pre_delete_collection=True (recria a collection)."""
     connection = os.getenv("DATABASE_URL")
     collection_name = os.getenv("PG_VECTOR_COLLECTION_NAME")
-    embedding_model = os.getenv("OPENAI_EMBEDDING_MODEL")
 
     for var_name, var_val in [
         ("DATABASE_URL", connection),
         ("PG_VECTOR_COLLECTION_NAME", collection_name),
-        ("OPENAI_EMBEDDING_MODEL", embedding_model),
     ]:
         if not var_val:
             raise ValueError(f"Erro: variável {var_name} não definida no .env.")
 
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key or api_key == "sk-sua-chave-aqui":
-        raise ValueError(
-            "Erro: OPENAI_API_KEY não configurada no .env "
-            "(substitua o placeholder por uma chave real)."
-        )
-
-    embeddings = OpenAIEmbeddings(model=embedding_model)
+    # Modelo e credencial vêm do provider ativo (LLM_PROVIDER): a busca usa a
+    # MESMA fábrica, garantindo embeddings compatíveis entre ingestão e busca.
+    embeddings = criar_embeddings()
 
     return PGVector(
         embeddings=embeddings,

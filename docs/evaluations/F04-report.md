@@ -1,9 +1,9 @@
 # Evaluation Report — F04 CLI de Chat
 
-- Data: 2026-07-22
+- Data: 2026-07-22 · **reavaliada em 2026-09-03**
 - Avaliador: `evaluator` (independente)
-- Veredito: **BLOCKED** (bloqueio de ambiente — Docker daemon parado + conta OpenAI sem quota; **não** é defeito de código)
-- Gates: 2/2 verdes (`py_compile` exit 0; `pytest` 26/26)
+- Veredito: **APPROVED** na reavaliação (ver seção final). A avaliação original ficou **BLOCKED** por Docker parado e conta OpenAI sem quota.
+- Gates: 2/2 verdes (`py_compile` exit 0; `pytest` 36/36 na reavaliação — eram 26/26 à época)
 - Método: gates reais + execução real dos blocos possíveis (CLI real, sem mock); revisão de código independente por agente menor (Sonnet). Chave jamais impressa.
 
 ## Pré-requisitos de ambiente
@@ -56,3 +56,26 @@
 - **Na reavaliação, reexecutar apenas os blocos bloqueados:** CA-04.1, CA-04.2 (com pergunta in-context, ex.: "Qual o faturamento da Alfa Energia S.A.?" → R$ 722.875.391,46), CA-04.3 interativo (`sair`, Ctrl+C, Ctrl+D), CA-04.4 via base vazia, e ≥3 perguntas armadilha esperando exatamente `"Não tenho informações necessárias para responder sua pergunta."`. CA-04.4 (chave ausente / banco fora) já tem evidência real definitiva.
 - **Antes do APPROVED final (opcional, melhora robustez):** endereçar os achados nº 1 (asserar `PERGUNTA: `) e nº 2 (estreitar o `except`). Não bloqueiam a aprovação por si sós, mas fecham lacunas.
 - **Status permanece `implemented`** — sem promoção a `evaluated` até os blocos bloqueados passarem em execução real.
+
+
+---
+
+## Reavaliação (2026-09-03)
+
+Banco de pé, base populada (67 chunks), provider Gemini. **Todos os quatro blocos foram exercidos na CLI real** — inclusive os dois que a avaliação original não conseguiu executar (Ctrl+C e base vazia).
+
+| Item | Resultado | Evidência |
+|---|---|---|
+| **CA-04.1** | ✅ **PASS** | `printf 'P1\nP2\nsair\n' \| venv/bin/python src/chat.py` → saída contém `Faça sua pergunta:`; **2 blocos** `RESPOSTA: ` (uma por pergunta — o loop processa mais de uma); **EXIT=0** |
+| **CA-04.2** | ✅ **PASS** | Prompt `PERGUNTA: ` visível 3× na saída piped; cada resposta prefixada por `RESPOSTA: `; P2 = `Qual é a capital da França?` → `RESPOSTA: Não tenho informações necessárias para responder sua pergunta.` (frase padrão exata). Resolve o **achado nº 1** da avaliação original, que apontava a ausência de verificação do literal `PERGUNTA: ` — agora comprovado em execução real |
+| **CA-04.3** | ✅ **PASS** (3 vias) | **`sair`:** `Encerrando. Até logo!`, EXIT=0, 0 traceback. **Ctrl+C (SIGINT real):** processo iniciado com `start_new_session=True`, `os.kill(pid, SIGINT)` enviado enquanto bloqueado no `input()` → stdout `'Faça sua pergunta:\nPERGUNTA: \nEncerrando. Até logo!\n'`, **stderr vazio**, **EXIT=0**, 0 traceback. **Ctrl+D/EOF:** `venv/bin/python src/chat.py < /dev/null` → despedida, EXIT=0, 0 traceback |
+| **CA-04.4** | ✅ **PASS** (3 vias) | **Base vazia:** após `DELETE FROM langchain_pg_embedding` (67 linhas removidas) → `A base está vazia. Execute primeiro: python src/ingest.py`, EXIT=0, stderr vazio, 0 traceback, **loop não iniciou**; base restaurada em seguida. **Chave do provider ativo ausente** (`GOOGLE_API_KEY=""`): `Falha ao iniciar a busca: Erro: GOOGLE_API_KEY não configurada no .env (...)` + orientação em PT, EXIT=0, 0 traceback, **0 vazamento de chave**, loop não iniciou. **Variante literal do contrato** (`LLM_PROVIDER=openai` sem `OPENAI_API_KEY`): mensagem equivalente para `OPENAI_API_KEY` |
+
+### Problemas da avaliação original
+
+- **#1 (nenhum teste asserta o literal `PERGUNTA: `):** o ponto cego no teste unitário **permanece**, mas o comportamento passou a ser verificado em execução real nesta reavaliação. Severidade rebaixada para BAIXA; sugestão ao implementador: capturar o argumento `prompt` no monkeypatch de `input`.
+- **Bloqueios de ambiente:** **RESOLVIDOS** (Docker de pé; provider Gemini no lugar da conta OpenAI sem quota).
+
+### Nota sobre o texto do contrato
+
+O CA-04.4 fala em `.env` sem `OPENAI_API_KEY`. Após a F06 a mensagem correta é a do provider indicado por `LLM_PROVIDER`. Ambas as vias foram testadas e passam.

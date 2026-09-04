@@ -13,7 +13,10 @@ def processar_pergunta(chain, pergunta: str) -> str:
         resultado = chain.invoke(pergunta)
         return str(resultado)
     except Exception:
-        return "Erro ao consultar o modelo. Verifique sua conexão e a OPENAI_API_KEY."
+        return (
+            "Erro ao consultar o modelo. Verifique sua conexão e a chave do "
+            "provider ativo (OPENAI_API_KEY ou GOOGLE_API_KEY)."
+        )
 
 
 def executar_loop_chat(chain) -> None:
@@ -40,7 +43,7 @@ def main() -> None:
 
     if not chain:
         print("Não foi possível iniciar o chat. Verifique os erros de inicialização.")
-        print("Passos: 1) docker compose up -d  2) configure o .env (OPENAI_API_KEY)  3) python src/ingest.py")
+        print("Passos: 1) docker compose up -d  2) configure o .env (OPENAI_API_KEY ou GOOGLE_API_KEY)  3) python src/ingest.py")
         return
 
     if not verificar_colecao_populada():

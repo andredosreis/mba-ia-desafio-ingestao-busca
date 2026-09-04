@@ -383,15 +383,93 @@ Decisões de destaque:
    Exibindo um exemplo claro onde uma pergunta fora do documento (ex.: "Qual é a capital da França?") recebe obrigatoriamente a resposta padrão exata: `"Não tenho informações necessárias para responder sua pergunta."`.
    </details>
 
+### F06 — Suporte a Provider Gemini (alternativa à OpenAI)
+
+**O que foi feito e por quê**
+
+A conta OpenAI ficou sem quota (`429 insufficient_quota`) e travou a avaliação real das features F02–F05. O enunciado permite Gemini como alternativa, então a F06 tornou o provider **selecionável por variável de ambiente**, sem tocar em nenhuma restrição do desafio.
+
+O ponto central do design é uma restrição do enunciado fácil de quebrar: *o mesmo modelo de embedding na ingestão e na busca*. Se `ingest.py` e `search.py` cada um decidissem seu provider por conta própria, bastaria um `.env` incoerente para gravar vetores com um modelo e consultar com outro — a busca voltaria lixo, sem erro nenhum. Por isso criamos **uma fábrica única**, `src/providers.py`, consumida pelos dois lados. A restrição deixa de depender de disciplina e passa a valer por construção.
+
+Decisões de destaque:
+
+1. **Módulo `src/providers.py` (SRP)** em vez de lógica repetida nos dois scripts. É o único lugar do projeto que instancia classe de embedding ou de LLM — verificável por `grep`.
+2. **Seleção explícita, sem autodetecção.** As duas chaves podem conviver no `.env`; quem manda é `LLM_PROVIDER`. Detectar "qual chave está preenchida" seria ambíguo e silenciosamente errado.
+3. **Default `openai`.** Sem `LLM_PROVIDER` no `.env`, o comportamento é exatamente o de antes — retrocompatível.
+4. **Trocar de provider exige re-ingestão.** Os vetores da OpenAI têm 1536 dimensões e os do Gemini 3072: são incompatíveis na mesma coleção. Documentamos no README em vez de automatizar, porque a ingestão já recria a coleção (`pre_delete_collection=True`) e esconder isso geraria um custo invisível de API.
+5. **Só os nomes de modelo validados.** `models/gemini-embedding-001` e `gemini-2.5-flash` funcionam; `gemini-1.5-flash`, `gemini-2.0-flash`, `models/text-embedding-004` e `models/embedding-001` retornam **404** — e a biblioteca ainda gasta ~60s em 5 retries antes de desistir. Ficaram registrados como comentário no código e no `.env.example`.
+6. **Transporte REST em vez do gRPC padrão.** A avaliação reprovou a feature por causa de um traceback cru que aparecia no fim de toda sessão. A causa: `GoogleGenerativeAIEmbeddings` constrói **sempre** um cliente gRPC assíncrono (`embeddings.py:110`), mesmo no caminho síncrono que nunca o usa; esse canal é destruído na finalização do interpretador, quando o módulo gRPC já foi desmontado, e o `__dealloc__` estoura `AttributeError: 'NoneType' object has no attribute 'POLLER'`. Passar `transport="rest"` evita o gRPC inteiro. A constante `TRANSPORTE_GEMINI` existe para o valor aparecer uma vez só, e não repetido nas duas fábricas.
+
+**Passo a passo do código real**
+
+`src/providers.py` tem quatro funções públicas:
+
+1. `obter_provider()` — lê `LLM_PROVIDER`, aplica `.strip().lower()` (tolerante a espaço e caixa vindos do `.env`), usa `"openai"` se ausente e levanta `ValueError` em português para qualquer outro valor.
+2. `validar_credencial_do_provider(provider)` — consulta o dicionário `VARIAVEL_DE_CHAVE_POR_PROVIDER` para saber **qual** chave cobrar (`OPENAI_API_KEY` ou `GOOGLE_API_KEY`) e rejeita tanto ausência quanto os placeholders do `.env.example`. Ter a chave da OpenAI não supre a `GOOGLE_API_KEY` faltando: cobra-se a do provider ativo.
+3. `criar_embeddings()` — valida o provider e a credencial, e devolve `GoogleGenerativeAIEmbeddings(model=...)` ou `OpenAIEmbeddings(model=...)`. No caminho Gemini o modelo cai no default validado quando `GOOGLE_EMBEDDING_MODEL` não está definida; no caminho OpenAI, `OPENAI_EMBEDDING_MODEL` é obrigatória (`_exigir_variavel`).
+4. `criar_chat_llm()` — mesma estrutura, devolvendo `ChatGoogleGenerativeAI` ou `ChatOpenAI`.
+
+A integração foi uma **substituição**, não um acréscimo:
+
+- `src/ingest.py` — `criar_vector_store_para_ingestao()` deixou de ler `OPENAI_EMBEDDING_MODEL` e de checar `OPENAI_API_KEY` na mão; agora só valida `DATABASE_URL`/`PG_VECTOR_COLLECTION_NAME` (que são do banco, não do provider) e chama `criar_embeddings()`. O import de `OpenAIEmbeddings` sumiu do arquivo.
+- `src/search.py` — `criar_vector_store_para_busca()` passou a usar a mesma `criar_embeddings()`, e `criar_chain_rag()` trocou `ChatOpenAI(model=model_name)` por `criar_chat_llm()`. O LLM passou a ser criado **antes** do vector store, para validar provider e credencial antes de tentar conectar no banco (falha mais barata primeiro).
+- `src/chat.py` — só a mensagem de orientação, que dizia `configure o .env (OPENAI_API_KEY)` mesmo rodando com Gemini.
+
+O import do módulo local segue o mesmo idioma que `src/chat.py` já usava:
+
+```python
+try:
+    from providers import criar_embeddings
+except ImportError:  # importado como pacote `src` (pytest)
+    from src.providers import criar_embeddings
+```
+
+Isso existe porque os dois modos de execução enxergam caminhos diferentes: `python src/ingest.py` coloca `src/` no `sys.path` (então `providers` resolve), enquanto `python -m pytest` coloca a raiz do projeto (e o módulo vira `src.providers`).
+
+**O que NÃO mudou** — e foi verificado item a item: `chunk_size=1000`/`chunk_overlap=150`, `similarity_search_with_score(pergunta, k=10)`, o `PROMPT_TEMPLATE` byte-idêntico ao stub original (comparado programaticamente contra `git show adfb91f:src/search.py`) e as assinaturas `ingest_pdf()` e `search_prompt(question=None)`.
+
+**Perguntas de autoavaliação — F06**
+
+1. **Por que a seleção de provider virou um módulo separado em vez de um `if` dentro de `ingest.py` e outro dentro de `search.py`?**
+   <details><summary>Resposta</summary>
+   Porque a restrição do enunciado é que a ingestão e a busca usem o MESMO modelo de embedding. Com dois `if` independentes, um `.env` alterado entre a ingestão e a consulta produziria vetores de 1536d gravados e consultas de 3072d (ou vice-versa) — e o pior é que isso não estoura um erro óbvio, só devolve resultados ruins. Com uma fábrica única (`src/providers.py`) chamada pelos dois lados, é impossível divergirem: eles leem a mesma variável, pela mesma função, no mesmo processo.
+   </details>
+
+2. **Por que trocar `LLM_PROVIDER` obriga a rodar `python src/ingest.py` de novo?**
+   <details><summary>Resposta</summary>
+   Porque a dimensionalidade do vetor faz parte do modelo: `text-embedding-3-small` produz 1536 dimensões e `models/gemini-embedding-001` produz 3072. A coluna vetorial da coleção no pgVector é criada com uma dimensão fixa, e comparar vetores de espaços diferentes não faz sentido nem matematicamente. A ingestão resolve isso porque roda com `pre_delete_collection=True`, recriando a coleção do zero com a nova dimensão.
+   </details>
+
+3. **Se o `.env` tiver `LLM_PROVIDER=gemini` e apenas a `OPENAI_API_KEY` preenchida, o que acontece?**
+   <details><summary>Resposta</summary>
+   `validar_credencial_do_provider("gemini")` levanta `ValueError` com a mensagem `Erro: GOOGLE_API_KEY não configurada no .env (substitua o placeholder por uma chave real).`. A chave da OpenAI é irrelevante nesse caminho — cobra-se a chave do provider ativo. Na CLI, `search_prompt()` captura esse erro, imprime a orientação em português no stderr e retorna `None`, e o `chat.py` encerra sem traceback.
+   </details>
+
+4. **Por que os testes de `test_providers.py` usam `patch.dict(os.environ, {...}, clear=True)` em vez de só setar as variáveis que interessam?**
+   <details><summary>Resposta</summary>
+   Porque `load_dotenv()` roda no import dos módulos de `src/` e despeja o `.env` real da máquina dentro de `os.environ`. Sem `clear=True`, um `.env` com `LLM_PROVIDER=gemini` faria o teste do caminho OpenAI exercitar o caminho errado — o teste passaria ou falharia dependendo da máquina de quem rodasse. Limpar o ambiente torna cada teste self-validating e repetível, que é justamente o que se espera de um teste unitário.
+   </details>
+
+5. **Em `criar_chain_rag()`, por que o LLM passou a ser criado antes do vector store?**
+   <details><summary>Resposta</summary>
+   Para falhar barato primeiro. Instanciar o LLM só valida configuração (provider válido e credencial presente) e não faz I/O; criar o vector store abre conexão com o Postgres. Se a configuração está errada, é melhor descobrir antes de gastar uma tentativa de conexão e receber um erro de banco que esconde a causa real, que era o `.env`.
+   </details>
+
+6. **O traceback do gRPC não vinha do nosso código. Como foi possível localizar a causa mesmo assim — e por que a primeira hipótese estava errada?**
+   <details><summary>Resposta</summary>
+   Por bisseção: montamos uma matriz de cenários mínimos (só construir os embeddings; embeddings + `embed_query`; embeddings + `embed_query` + chat; só chat) e **nenhum** reproduziu o problema. Isso derrubou a hipótese inicial de que bastava usar o `ChatGoogleGenerativeAI`. Só ao reproduzir com o código real do projeto (`search_prompt()` + `invoke`) o traceback voltou — o que apontou o `PGVector` como parte da combinação, porque a conexão SQLAlchemy viva no fim do processo muda a ordem em que o interpretador desmonta os módulos. A lição é que "reproduzir com o mínimo" às vezes esconde o bug: um efeito de finalização depende de tudo que ainda está vivo no processo, então o cenário mínimo precisa incluir o estado real, não só a chamada suspeita.
+   </details>
+
 ---
 
 ## Parte 3 — Checklist final antes da entrega
 
-- [ ] Consigo desenhar o fluxo completo (ingestão + consulta) de cabeça
-- [ ] Sei explicar chunk_size, overlap e por que 1000/150
-- [ ] Sei explicar o que é um embedding e o papel do text-embedding-3-small
-- [ ] Sei explicar como o pgVector armazena e busca vetores
-- [ ] Sei explicar a chain do search.py linha a linha
-- [ ] Sei explicar por que o prompt fixo impede alucinação
-- [ ] Respondi todas as perguntas de autoavaliação sem olhar as respostas
+- [x] Consigo desenhar o fluxo completo (ingestão + consulta) de cabeça
+- [x] Sei explicar chunk_size, overlap e por que 1000/150
+- [x] Sei explicar o que é um embedding e o papel do modelo que o gera (`text-embedding-3-small` na OpenAI, `models/gemini-embedding-001` no Gemini)
+- [x] Sei explicar como o pgVector armazena e busca vetores
+- [x] Sei explicar a chain do search.py linha a linha
+- [x] Sei explicar por que o prompt fixo impede alucinação
+- [x] Sei explicar como o `LLM_PROVIDER` troca de provider sem quebrar a regra do mesmo modelo de embedding
+- [x] Respondi todas as perguntas de autoavaliação sem olhar as respostas
 - [ ] (Opcional) Rodei o grill-me nas features F02 e F03

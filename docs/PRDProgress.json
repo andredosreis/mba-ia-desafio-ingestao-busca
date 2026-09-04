@@ -1,7 +1,7 @@
 {
   "project": "ingestao-busca-semantica-langchain-postgres",
   "prd": "docs/PRD.md",
-  "updatedAt": "2026-07-21",
+  "updatedAt": "2026-09-03",
   "statusValues": ["pending", "in_progress", "implemented", "evaluated"],
   "rules": {
     "oneFeatureAtATime": true,
@@ -13,7 +13,8 @@
     { "wave": 1, "features": ["F01"] },
     { "wave": 2, "features": ["F02", "F03"] },
     { "wave": 3, "features": ["F04"] },
-    { "wave": 4, "features": ["F05"] }
+    { "wave": 4, "features": ["F05"] },
+    { "wave": 5, "features": ["F06"] }
   ],
   "features": [
     {
@@ -32,7 +33,7 @@
       "id": "F02",
       "name": "Ingestão do PDF",
       "wave": 2,
-      "status": "implemented",
+      "status": "evaluated",
       "dependsOn": ["F01"],
       "tags": ["ingestao", "embeddings", "pipeline"],
       "specDir": "docs/features/F02-ingestao",
@@ -43,7 +44,7 @@
       "id": "F03",
       "name": "Busca Semântica e Resposta",
       "wave": 2,
-      "status": "implemented",
+      "status": "evaluated",
       "dependsOn": ["F01"],
       "tags": ["busca", "rag", "llm", "prompt"],
       "specDir": "docs/features/F03-busca",
@@ -54,7 +55,7 @@
       "id": "F04",
       "name": "CLI de Chat",
       "wave": 3,
-      "status": "implemented",
+      "status": "evaluated",
       "dependsOn": ["F02", "F03"],
       "tags": ["cli", "ux"],
       "specDir": "docs/features/F04-cli-chat",
@@ -65,12 +66,25 @@
       "id": "F05",
       "name": "README e Entrega",
       "wave": 4,
-      "status": "implemented",
+      "status": "evaluated",
       "dependsOn": ["F01", "F02", "F03", "F04"],
       "tags": ["docs", "entrega"],
       "specDir": "docs/features/F05-readme-entrega",
       "acceptanceCriteria": ["CA-05.1", "CA-05.2", "CA-05.3"],
-      "deliverables": ["README.md"]
+      "deliverables": ["README.md"],
+      "notes": "Reavaliada em 2026-09-03: veredito REJECTED. CA-05.2 e CA-05.3 PASS. CA-05.1 FALHA: o README anuncia Python 3.10+, mas numpy==2.3.2 exige >=3.11 — seguindo o README literalmente o pip install quebra e o projeto nao roda. O restante do fluxo foi validado em dry-run com clone limpo e Python 3.12 (banco zerado, ingestao 67 chunks, chat correto). Avaliador independente encontrou um segundo furo no mesmo CA-05.1: pytest documentado no README mas ausente do requirements.txt (falhava em clone limpo). Corrigido com pytest==9.1.1. Revalidada em 2026-09-03 pelo mesmo avaliador independente: APPROVED — dry-run completo do zero com todos os comandos do README, incluindo pytest 36/36 exit 0 no clone limpo, sem banco e sem chave. Ver docs/evaluations/F05-report.md."
+    },
+    {
+      "id": "F06",
+      "name": "Suporte a Provider Gemini (alternativa à OpenAI)",
+      "wave": 5,
+      "status": "evaluated",
+      "dependsOn": ["F02", "F03"],
+      "tags": ["provider", "gemini", "openai", "embeddings", "llm"],
+      "specDir": "docs/features/F06-provider-gemini",
+      "acceptanceCriteria": ["CA-06.1", "CA-06.2", "CA-06.3", "CA-06.4"],
+      "deliverables": ["src/providers.py (fábrica de provider)", "tests/test_providers.py", "src/ingest.py (seleção de provider)", "src/search.py (seleção de provider)", ".env.example", "README.md", "CLAUDE.md"],
+      "notes": "Implementado em 2026-09-03. Seleção via LLM_PROVIDER=openai|gemini (default openai), centralizada em src/providers.py — única fábrica de embeddings/LLM do projeto, o que garante o mesmo modelo na ingestão e na busca. Modelos Gemini: models/gemini-embedding-001 (3072d) e gemini-2.5-flash. Troca de provider exige re-ingestão (1536↔3072). Assinaturas ingest_pdf()/search_prompt() inalteradas; chunk 1000/150, k=10 e PROMPT_TEMPLATE intocados. CA-06.1/06.2/06.4 verificados (36/36 testes verdes); Avaliado em 2026-09-03: veredito REJECTED — CA-06.1/06.2/06.4 PASS e CA-06.3 comprovado em execução real (67 chunks 3072d, respostas corretas conferidas por SQL, 4/4 armadilhas byte-exatas), mas a cláusula \"nenhum traceback cru\" do CA-06.3 falha: o grpcio emite 2 tracebacks ao encerrar toda sessão que fez ao menos uma pergunta (100% determinístico). Segundo achado: asserts tautológicos dos modelos default em tests/test_providers.py (mutação sobrevive). Ambos corrigidos em 2026-09-03: transporte REST via constante TRANSPORTE_GEMINI em src/providers.py (0 tracebacks em 6/6 execuções reais) e asserts com literais em tests/test_providers.py (as 3 mutações de modelo/transporte agora falham). Gates 2/2, 36/36 testes. Ver docs/evaluations/F06-report.md, seção \"Atualização pós-correção\". Avaliada de forma independente em 2026-09-03 por agente separado (sem participacao na implementacao): veredito APPROVED nos quatro criterios, com script mockado proprio, comparacao do PROMPT_TEMPLATE por AST+SHA-256, teste de mutacao proprio e varredura de chaves em todo o historico do git. Achado adicional fora do contrato (mensagem de erro de runtime citando so OPENAI_API_KEY) corrigido. Limitacao: o caminho LLM_PROVIDER=openai nunca foi exercitado em execucao real (conta sem quota). Ver docs/evaluations/F06-report.md."
     }
   ]
 }
